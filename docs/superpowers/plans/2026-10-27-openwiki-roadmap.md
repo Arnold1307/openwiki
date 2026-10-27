@@ -13,22 +13,21 @@
 - Prüfstand kann einen synchronisierten Wiki-Stand zu einem exakten Commit über
   `GET /api/projects/:id/context?sha=<commit>` abrufen. Der Header
   `X-OpenWiki-SHA` bestätigt den Ref.
-- Server- und Web-Tests, Typechecks, Container-Build und `/healthz` wurden
-  erfolgreich geprüft.
+- Playwright-End-to-End-Smoke-Test für Übersicht → Projekt → Doku-Navigation →
+  Suche bei gesperrtem externem Netz implementiert (`hub/web/e2e/smoke.spec.ts`).
+- Server- und Web-Tests, Typechecks, E2E-Smoke-Tests, Container-Build und `/healthz`
+  wurden erfolgreich geprüft.
 
 ## Noch offen
 
-1. Playwright-End-to-End-Test für Übersicht → Projekt → Doku → Suche bei
-   gesperrtem externem Netz ergänzen. Die vorhandenen Web-Tests sind Vitest-
-   Tests.
-2. Mit ACTOR die gewünschte MCP-Konfiguration und den Aufruf der drei Tools
+1. Mit ACTOR die gewünschte MCP-Konfiguration und den Aufruf der drei Tools
    `openwiki_search`, `openwiki_read` und `openwiki_list_wikis` abstimmen.
-3. Mit SpecLab das Ref-Format `openwiki/<seite>.md#anker@sha` und das Feld
+2. Mit SpecLab das Ref-Format `openwiki/<seite>.md#anker@sha` und das Feld
    `changedSince` abstimmen; danach den Ref-Resolver implementieren.
-4. GitLab-CI-Beispiel verbessern: Schleifenschutz nach Doku-Merge,
+3. GitLab-CI-Beispiel verbessern: Schleifenschutz nach Doku-Merge,
    vorhandenes Merge Request aktualisieren und keine GitHub-Dateien
    committen.
-5. Upstream-Visualizer optional ohne CDN ausliefern, Suche anschließen und
+4. Upstream-Visualizer optional ohne CDN ausliefern, Suche anschließen und
    Oberfläche übersetzbar machen.
 
 ## Betriebsannahmen
