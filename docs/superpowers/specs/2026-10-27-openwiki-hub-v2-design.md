@@ -1,7 +1,7 @@
 # OpenWiki Hub v2 — Design (Entwurf)
 
 **Datum:** 2026-10-27
-**Status:** ENTWURF mit Empfehlungen. **Nicht freigegeben.** Die Entscheidungen E1–E5 sind Vorschläge; bis zur Freigabe wird nichts implementiert.
+**Status:** E1–E5 freigegeben (2026-10-27). Offene Fragen unten sind mit Annahmen im Plan belegt, bis sie beantwortet sind.
 **Ersetzt:** `docs/superpowers/specs/2026-07-08-openwiki-hub-design.md` (v1, Status: veraltet)
 **Basis:** upstream `langchain-ai/openwiki` v0.7.2 (Branch `chore/upstream-v0.7.2`)
 
