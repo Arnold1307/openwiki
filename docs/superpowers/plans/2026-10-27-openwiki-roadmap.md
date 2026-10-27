@@ -21,6 +21,10 @@
   transienter `.run.json` und Ausschluss von GitHub-Workflow-Dateien.
 - Server- und Web-Tests, Typechecks, E2E-Smoke-Tests, Container-Build und `/healthz`
   wurden erfolgreich geprüft.
+- **Upstream-Visualizer für Offline-Betrieb & Lokalisierung**:
+  - Offline-Modus mit `--no-cdn` (Server & statischer Export): Vendor-Assets (`force-graph`, `marked`, `dompurify`, `mermaid`) gebündelt in `dist/visualize/vendor/` und ohne externe CDNs ausgeliefert; angepasste restriktive Content Security Policy (`OFFLINE_CSP`).
+  - Vollständige Lokalisierungsunterstützung (`--lang <de|en>`) mit Übersetzungswörterbuch (`src/visualize/i18n.ts`) für Labels, Tooltips, Statusanzeigen und Barrierefreiheit.
+  - Interaktive Suche und Typ-Filter im Visualizer (`#search`, `#filter-type`), mit Live-Filterung in Graph & Seitenleiste über Titel, Pfad/ID, Typ, Tags, Kurzbeschreibung und Textkörper.
 
 ## Noch offen
 
@@ -28,8 +32,6 @@
    `openwiki_search`, `openwiki_read` und `openwiki_list_wikis` abstimmen.
 2. Mit SpecLab das Ref-Format `openwiki/<seite>.md#anker@sha` und das Feld
    `changedSince` abstimmen; danach den Ref-Resolver implementieren.
-3. Upstream-Visualizer optional ohne CDN ausliefern, Suche anschließen und
-   Oberfläche übersetzbar machen.
 
 ## Betriebsannahmen
 
