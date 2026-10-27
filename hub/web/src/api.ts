@@ -43,15 +43,27 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<T> {
   const response = await fetch(`/api${path}`, {
     method,
-    headers: body === undefined ? undefined : { "content-type": "application/json" },
+    headers: {
+      "x-requested-with": "openwiki-hub",
+      ...(body === undefined ? {} : { "content-type": "application/json" }),
+    },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!response.ok) {
-    const payload = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new ApiError(response.status, payload.error ?? `Anfrage fehlgeschlagen (${response.status}).`);
+    const payload = (await response.json().catch(() => ({}))) as {
+      error?: string;
+    };
+    throw new ApiError(
+      response.status,
+      payload.error ?? `Anfrage fehlgeschlagen (${response.status}).`,
+    );
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
@@ -59,20 +71,29 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 
 export const api = {
   projects: () => request<Project[]>("GET", "/projects"),
-  project: (id: number) => request<Project & { staleness: unknown }>("GET", `/projects/${id}`),
+  project: (id: number) =>
+    request<Project & { staleness: unknown }>("GET", `/projects/${id}`),
   addProject: (url: string) => request<Project>("POST", "/projects", { url }),
   setEnabled: (id: number, enabled: boolean) =>
     request<Project>("PATCH", `/projects/${id}`, { enabled }),
   removeProject: (id: number) => request<void>("DELETE", `/projects/${id}`),
-  scan: (id: number) => request<{ status: string; message?: string }>("POST", `/projects/${id}/scan`),
+  scan: (id: number) =>
+    request<{ status: string; message?: string }>(
+      "POST",
+      `/projects/${id}/scan`,
+    ),
   scanAll: () => request<{ queued: number }>("POST", "/scan-all"),
   scans: (id: number) => request<ScanRecord[]>("GET", `/projects/${id}/scans`),
-  docs: (id: number) => request<{ sha: string; pages: string[] }>("GET", `/projects/${id}/docs`),
+  docs: (id: number) =>
+    request<{ sha: string; pages: string[] }>("GET", `/projects/${id}/docs`),
   doc: (id: number, path: string) =>
     request<{ path: string; sha: string; markdown: string }>(
       "GET",
       `/projects/${id}/docs/file?path=${encodeURIComponent(path)}`,
     ),
   search: (q: string) =>
-    request<{ hits: SearchHit[] }>("GET", `/search?q=${encodeURIComponent(q)}&limit=20`),
+    request<{ hits: SearchHit[] }>(
+      "GET",
+      `/search?q=${encodeURIComponent(q)}&limit=20`,
+    ),
 };

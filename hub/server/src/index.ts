@@ -1,5 +1,7 @@
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyInstance } from "fastify";
 import { sanitizeDiagnosticText } from "openwiki/diagnostics";
 import type { HubConfig } from "./config.js";
@@ -15,7 +17,17 @@ import { SyncQueue } from "./sync/queue.js";
 export interface BuildOptions {
   /** Replaces the real GitLab client, for tests. */
   client?: HubGitLab;
+  /** Built web app to serve. Defaults to hub/web/dist next to this package. */
+  webRoot?: string;
 }
+
+/** Path prefixes that belong to the API and never fall back to the web app. */
+const API_PREFIX = /^\/(api|hooks|mcp|healthz)(\/|$|\?)/;
+
+/** hub/web/dist relative to this file, valid from src/ and from dist/. */
+const DEFAULT_WEB_ROOT = fileURLToPath(
+  new URL("../../web/dist/", import.meta.url),
+);
 
 /**
  * Build a redaction function that removes the GitLab token from any text.
@@ -27,7 +39,9 @@ export interface BuildOptions {
 export function redactorFor(token: string): (text: string) => string {
   return (text) => {
     const sanitized = sanitizeDiagnosticText(text);
-    return token ? sanitized.split(token).join("[REDACTED:GITLAB_TOKEN]") : sanitized;
+    return token
+      ? sanitized.split(token).join("[REDACTED:GITLAB_TOKEN]")
+      : sanitized;
   };
 }
 
@@ -54,7 +68,10 @@ export async function buildServer(
     db,
     client:
       options.client ??
-      new GitLabClient({ baseUrl: config.gitlabBaseUrl, token: config.gitlabToken }),
+      new GitLabClient({
+        baseUrl: config.gitlabBaseUrl,
+        token: config.gitlabToken,
+      }),
     queue: new SyncQueue(config.concurrency),
     redact: redactorFor(config.gitlabToken),
   };
@@ -69,5 +86,21 @@ export async function buildServer(
   registerMcpRoute(app, deps);
   registerWebhookRoute(app, deps);
   app.decorate("hubDeps", deps);
+
+  const webRoot = options.webRoot ?? DEFAULT_WEB_ROOT;
+  if (existsSync(path.join(webRoot, "index.html"))) {
+    await app.register(fastifyStatic, {
+      root: webRoot,
+      prefix: "/",
+      wildcard: false,
+    });
+    // Client-side routes fall back to the app shell; unknown API paths stay 404.
+    app.setNotFoundHandler(async (request, reply) => {
+      if (request.method === "GET" && !API_PREFIX.test(request.url)) {
+        return reply.type("text/html").sendFile("index.html");
+      }
+      return reply.code(404).send({ error: "Not found." });
+    });
+  }
   return app;
 }

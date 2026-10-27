@@ -17,6 +17,7 @@ async function hubWithCounter() {
   });
   await app.inject({
     method: "POST",
+    headers: { "x-requested-with": "openwiki-hub" },
     url: "/api/projects",
     payload: { url: "https://gitlab.test/platform/core" },
   });

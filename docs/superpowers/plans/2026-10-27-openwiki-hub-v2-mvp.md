@@ -21,6 +21,22 @@ Bis zur Antwort gelten diese Annahmen. Jede lässt sich mit kleinem Aufwand änd
 | A3  | Zugriff (E4)         | MVP läuft hinter einem Reverse Proxy mit SSO. CSRF-Schutz ist im Code. GitLab-OIDC kommt in Task 11, sobald ein Client existiert. | Task 11             |
 | A4  | Gruppen              | Konfiguration über `OPENWIKI_HUB_GROUPS`, keine feste Gruppe im Code.                                                             | —                   |
 
+## Umsetzungsstand (2026-10-27)
+
+- Tasks 1–10: Server, Retrieval-API, MCP-HTTP, GitLab-Webhook/Zeitplan und
+  Web-App liegen auf `feat/hub-mvp`. Server (59 Tests) und Web (11 Tests)
+  bestehen; beide Pakete sind typgeprüft.
+- Bei Task 10 ist die Playwright-End-to-End-Abnahme (Übersicht → Projekt →
+  Seite → Suche bei gesperrtem externem Netz) noch offen. Die Web-Tests sind
+  Vitest-Tests.
+- Task 11 (GitLab-OIDC) bleibt ausgesetzt: Der MVP ist für SSO am Reverse Proxy
+  vorgesehen; ein OIDC-Client wurde nicht festgelegt.
+- Task 12 ist umgesetzt: Restart-Recovery, Container-Build und `/healthz` im
+  gestarteten Container wurden geprüft.
+- Phase 4: Der Prüfstand-Kontext ist über `GET /api/projects/:id/context?sha=`
+  vorhanden und auf stabilen Inhalt/Ref getestet. Die Abstimmung mit ACTOR und
+  der SpecLab-Resolver brauchen deren konkrete Schnittstellen.
+
 ## Global Constraints
 
 - Ein PR = eine Änderung, Conventional-Commit-Titel (`CONTRIBUTING.md`). Ein Task = ein Commit.

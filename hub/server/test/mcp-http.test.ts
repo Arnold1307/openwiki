@@ -27,11 +27,13 @@ async function startHub() {
   openApps.push(app);
   const added = await app.inject({
     method: "POST",
+    headers: { "x-requested-with": "openwiki-hub" },
     url: "/api/projects",
     payload: { url: "https://gitlab.test/platform/core" },
   });
   await app.inject({
     method: "POST",
+    headers: { "x-requested-with": "openwiki-hub" },
     url: `/api/projects/${added.json().id}/scan`,
   });
   const url = await app.listen({ port: 0, host: "127.0.0.1" });
@@ -40,7 +42,9 @@ async function startHub() {
 
 async function connect(url: string) {
   const client = new Client({ name: "hub-test", version: "1.0.0" });
-  await client.connect(new StreamableHTTPClientTransport(new URL(`${url}/mcp`)));
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(`${url}/mcp`)),
+  );
   return client;
 }
 
@@ -65,7 +69,9 @@ describe("MCP over HTTP", () => {
       name: "openwiki_search",
       arguments: { query: "exponential backoff" },
     });
-    const hits = JSON.parse((search.content as Array<{ text: string }>)[0]!.text) as Array<{
+    const hits = JSON.parse(
+      (search.content as Array<{ text: string }>)[0]!.text,
+    ) as Array<{
       projectPath: string;
       ref: string;
     }>;
