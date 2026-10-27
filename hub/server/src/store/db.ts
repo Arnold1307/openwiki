@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS projects (
   source         TEXT NOT NULL CHECK (source IN ('group', 'manual')),
   enabled        INTEGER NOT NULL DEFAULT 1,
   archived       INTEGER NOT NULL DEFAULT 0,
+  last_head_sha  TEXT,
   updated_at     TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS snapshots (

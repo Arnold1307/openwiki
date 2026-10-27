@@ -119,3 +119,33 @@ export function markInterruptedSnapshots(db: Db): number {
     )
     .run().changes;
 }
+
+/**
+ * Recent sync attempts for one project, newest first. Doubles as the scan
+ * history shown in the admin view.
+ *
+ * @param db - Open database.
+ * @param projectId - Project ID.
+ * @param limit - Maximum rows.
+ * @returns Snapshot rows, newest first.
+ */
+export function listSnapshots(db: Db, projectId: number, limit = 20): Snapshot[] {
+  return (
+    db
+      .prepare(
+        `SELECT sha, status, synced_at, error FROM snapshots
+         WHERE project_id = ? ORDER BY id DESC LIMIT ?`,
+      )
+      .all(projectId, limit) as {
+      sha: string;
+      status: SnapshotStatus;
+      synced_at: string;
+      error: string | null;
+    }[]
+  ).map((row) => ({
+    sha: row.sha,
+    status: row.status,
+    syncedAt: row.synced_at,
+    error: row.error,
+  }));
+}

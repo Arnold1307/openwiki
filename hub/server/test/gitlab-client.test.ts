@@ -78,4 +78,33 @@ describe("GitLabClient", () => {
       sha: "abc123",
     });
   });
+
+  it("looks up a project by its full path", async () => {
+    let requested = "";
+    const client = new GitLabClient({
+      baseUrl: "https://gitlab.test",
+      token: "t",
+      fetch: async (url) => {
+        requested = String(url);
+        return json({ id: 42, path_with_namespace: "platform/core", default_branch: "main", archived: false, web_url: "https://gitlab.test/platform/core" });
+      },
+    });
+    const project = await client.projectByPath("platform/core");
+    expect(requested).toContain("/api/v4/projects/platform%2Fcore");
+    expect(project.id).toBe(42);
+  });
+
+  it("counts commits between two shas from the compare endpoint", async () => {
+    const client = new GitLabClient({
+      baseUrl: "https://gitlab.test",
+      token: "t",
+      fetch: async (url) => {
+        const params = new URL(String(url)).searchParams;
+        expect(params.get("from")).toBe("old");
+        expect(params.get("to")).toBe("new");
+        return json({ commits: [{ id: "a" }, { id: "b" }, { id: "c" }] });
+      },
+    });
+    expect(await client.compareCount(7, "old", "new")).toBe(3);
+  });
 });

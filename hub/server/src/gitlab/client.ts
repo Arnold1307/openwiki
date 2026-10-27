@@ -114,6 +114,33 @@ export class GitLabClient {
     return new Uint8Array(await response.arrayBuffer());
   }
 
+  /**
+   * Look up a project by its full path, for manual additions by URL.
+   *
+   * @param path - Full path such as `platform/core`.
+   * @returns The project metadata.
+   */
+  async projectByPath(path: string): Promise<GitLabProject> {
+    const response = await this.request(`/api/v4/projects/${encodeURIComponent(path)}`);
+    return (await response.json()) as GitLabProject;
+  }
+
+  /**
+   * Count commits between two SHAs, as used for staleness.
+   *
+   * @param projectId - GitLab project ID.
+   * @param from - Older commit.
+   * @param to - Newer commit.
+   * @returns Number of commits GitLab reports between them.
+   */
+  async compareCount(projectId: number, from: string, to: string): Promise<number> {
+    const params = new URLSearchParams({ from, to });
+    const body = (await (
+      await this.request(`/api/v4/projects/${projectId}/repository/compare?${params}`)
+    ).json()) as { commits: unknown[] };
+    return body.commits.length;
+  }
+
   private async request(path: string): Promise<Response> {
     const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
       headers: { "PRIVATE-TOKEN": this.token },

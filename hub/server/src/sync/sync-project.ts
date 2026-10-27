@@ -6,6 +6,7 @@ import * as tar from "tar";
 import type { GitLabClient } from "../gitlab/client.js";
 import type { Db } from "../store/db.js";
 import type { Project } from "../store/projects.js";
+import { recordHead } from "../store/projects.js";
 import {
   pruneSnapshots,
   recordSnapshot,
@@ -58,6 +59,7 @@ export async function syncProject(
   try {
     const head = await client.defaultBranchHead(project.gitlabId ?? project.id);
     headSha = head.sha;
+    recordHead(db, project.id, head.sha);
     const known = snapshotForSha(db, project.id, head.sha);
     if (known && (known.status === "success" || known.status === "no-wiki")) {
       return { status: "skipped", sha: head.sha };

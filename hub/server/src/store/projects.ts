@@ -11,6 +11,8 @@ export interface Project {
   source: "group" | "manual";
   enabled: boolean;
   archived: boolean;
+  /** Default-branch head seen at the last sync attempt. */
+  lastHeadSha: string | null;
 }
 
 interface ProjectRow {
@@ -22,6 +24,7 @@ interface ProjectRow {
   source: "group" | "manual";
   enabled: number;
   archived: number;
+  last_head_sha: string | null;
 }
 
 /** Thrown when an operation is not allowed for the project's source. */
@@ -41,6 +44,7 @@ const fromRow = (row: ProjectRow): Project => ({
   source: row.source,
   enabled: row.enabled === 1,
   archived: row.archived === 1,
+  lastHeadSha: row.last_head_sha,
 });
 
 /**
@@ -217,4 +221,15 @@ export function getProjectByPath(db: Db, path: string): Project | undefined {
     | ProjectRow
     | undefined;
   return row ? fromRow(row) : undefined;
+}
+
+/**
+ * Remember the default-branch head seen by the latest sync attempt.
+ *
+ * @param db - Open database.
+ * @param id - Project ID.
+ * @param sha - Head commit SHA.
+ */
+export function recordHead(db: Db, id: number, sha: string): void {
+  db.prepare("UPDATE projects SET last_head_sha = ? WHERE id = ?").run(sha, id);
 }
