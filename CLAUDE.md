@@ -53,10 +53,10 @@ Project skills live in `.claude/skills/`. Use them when the task matches:
 
 ## Hub work
 
-The Hub (multi-project GitLab portal) is specified but not yet implemented, and the current spec is under revision. Spec (v1, to be replaced): `docs/superpowers/specs/2026-07-08-openwiki-hub-design.md`. Plan (v1): `docs/superpowers/plans/2026-07-08-openwiki-hub.md`. Roadmap and decisions: `docs/superpowers/plans/2026-10-27-openwiki-roadmap.md`. Do not implement the Hub before the v2 spec is approved. Start from the `hub-implementation` skill.
+The Hub MVP is implemented under `hub/`. Its current design is `docs/superpowers/specs/2026-10-27-openwiki-hub-v2-design.md`, its implementation and remaining MVP checks are tracked in `docs/superpowers/plans/2026-10-27-openwiki-hub-v2-mvp.md`, and SDLC follow-ups are in `TODO.md` and `docs/superpowers/plans/2026-10-27-openwiki-roadmap.md`. Start Hub work from the `hub-implementation` skill.
 
 ## Fork status (2026-10-27)
 
 - The fork is based on `origin/main` (upstream v0.7.2) after the rebase on branch `chore/upstream-v0.7.2`. The pre-rebase state is kept on `backup/pre-upstream-2026-10-27`.
-- The fork adds docs only (Hub spec and plan, roadmap, agent onboarding, LLM onboarding spec). Fork-specific code changes should stay minimal; check upstream before relying on CLI flags or provider lists.
+- The fork adds the Hub under `hub/` and related project docs. The upstream CLI remains the main product; check upstream before relying on CLI flags or provider lists.
 - SDLC context: OpenWiki supplies repository docs to the Prüfstand review pipeline and to ACTOR. Open items: `TODO.md`.

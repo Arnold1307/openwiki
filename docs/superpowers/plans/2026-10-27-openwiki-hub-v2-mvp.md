@@ -8,7 +8,7 @@
 
 **Tech Stack:** Node 22.22+ (ESM, NodeNext), TypeScript strict, Fastify, `@modelcontextprotocol/sdk` (Streamable-HTTP), SQLite, React 18, Vite, Vitest, marked, DOMPurify.
 
-**Spec:** `docs/superpowers/specs/2026-10-27-openwiki-hub-v2-design.md` (E1–E5 freigegeben). Die alte Spec `2026-07-08-openwiki-hub-design.md` gilt nicht mehr.
+**Spec:** `docs/superpowers/specs/2026-10-27-openwiki-hub-v2-design.md` (E1–E5 freigegeben). Der veraltete v1-Entwurf wurde aus der aktuellen Dokumentation entfernt.
 
 ## Annahmen zu den offenen Fragen
 
