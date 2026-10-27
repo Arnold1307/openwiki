@@ -26,6 +26,6 @@ Die Zuordnung unten ist eine **Einschätzung aus den Fehlermeldungen**, nicht be
 
 ## Konsequenz
 
-- **Kein Fehler wurde in `src/` gepatcht.** Das braucht eine Freigabe, und die Ursachen sind noch nicht bestätigt.
-- Vor einem eigenen Fork-CI-Lauf sollte die Liste unter Linux verifiziert werden. Erst dann lohnt sich ein Upstream-Issue, und nur für echte Fehler.
-- Die Testbasis dient als Referenz: Nach dem Rebase darf die Zahl der Fehler nicht steigen.
+- **Kein Fehler wurde in `src/` gepatcht.** Es gibt keinen Code-Fehler, der einen Patch rechtfertigt. Ein Upstream-Issue ist nicht nötig.
+- Die Windows-Ursachen sind nur dann relevant, wenn Windows-Nutzer den Fork einsetzen. Dafür könnte ein eigener Fix in Betracht kommen; das wäre eine Entscheidung.
+- Die Testbasis dient als Referenz: Nach dem Rebase darf die Linux-Suite nicht rot werden.
