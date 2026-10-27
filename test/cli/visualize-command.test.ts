@@ -45,6 +45,33 @@ describe("parseCommand visualize", () => {
     });
   });
 
+  test("accepts --no-cdn and --lang options", () => {
+    expect(
+      parseCommand(["visualize", "--no-cdn", "--lang", "de"]),
+    ).toEqual({
+      kind: "visualize",
+      exitCode: 0,
+      wikiDir: "openwiki",
+      port: 4321,
+      open: true,
+      exportDir: null,
+      noCdn: true,
+      lang: "de",
+    });
+
+    expect(
+      parseCommand(["visualize", "--lang=en"]),
+    ).toEqual({
+      kind: "visualize",
+      exitCode: 0,
+      wikiDir: "openwiki",
+      port: 4321,
+      open: true,
+      exportDir: null,
+      lang: "en",
+    });
+  });
+
   test("rejects an export without a directory", () => {
     expect(parseCommand(["visualize", "--export"])).toEqual({
       kind: "error",
@@ -82,6 +109,14 @@ describe("parseCommand visualize", () => {
       kind: "error",
       exitCode: 1,
       message: "--port requires a value.",
+    });
+  });
+
+  test("rejects a missing --lang value", () => {
+    expect(parseCommand(["visualize", "--lang"])).toEqual({
+      kind: "error",
+      exitCode: 1,
+      message: "--lang requires a language code.",
     });
   });
 

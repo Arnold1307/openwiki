@@ -72,6 +72,8 @@ export async function runVisualizeCommand(
       const result = await exportStaticVisualizer({
         wikiRoot,
         outputDir: path.resolve(process.cwd(), command.exportDir),
+        noCdn: command.noCdn,
+        lang: command.lang,
       });
       process.stdout.write(
         `Exported static visualizer to ${result.outputDir} (${result.graph.nodes.length} pages, ${result.graph.edges.length} links).\n`,
@@ -83,6 +85,8 @@ export async function runVisualizeCommand(
       wikiRoot,
       port: command.port,
       open: command.open,
+      noCdn: command.noCdn,
+      lang: command.lang,
     });
   } catch (error) {
     process.stderr.write(`${getErrorMessage(error)}\n`);

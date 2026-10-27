@@ -191,6 +191,8 @@ export type CliCommand =
       port: number;
       open: boolean;
       exportDir: string | null;
+      noCdn?: boolean;
+      lang?: string;
     }
   | {
       kind: "ingest";
@@ -402,6 +404,8 @@ export function parseCommand(argv: string[]): CliCommand {
     let port = 4321;
     let open = true;
     let exportDir: string | null = null;
+    let noCdn = false;
+    let lang: string | undefined;
     let sawPort = false;
     let sawNoOpen = false;
     let sawPositional = false;
@@ -413,6 +417,38 @@ export function parseCommand(argv: string[]): CliCommand {
       if (arg === "--no-open") {
         open = false;
         sawNoOpen = true;
+        continue;
+      }
+
+      if (arg === "--no-cdn") {
+        noCdn = true;
+        continue;
+      }
+
+      if (arg === "--lang") {
+        const rawLang = optionArgs[index + 1];
+        if (!rawLang || rawLang.startsWith("-")) {
+          return {
+            kind: "error",
+            exitCode: 1,
+            message: "--lang requires a language code.",
+          };
+        }
+        lang = rawLang;
+        index += 1;
+        continue;
+      }
+
+      if (arg.startsWith("--lang=")) {
+        const rawLang = arg.slice("--lang=".length);
+        if (!rawLang) {
+          return {
+            kind: "error",
+            exitCode: 1,
+            message: "--lang requires a language code.",
+          };
+        }
+        lang = rawLang;
         continue;
       }
 
@@ -493,7 +529,17 @@ export function parseCommand(argv: string[]): CliCommand {
       };
     }
 
-    return { kind: "visualize", exitCode: 0, wikiDir, port, open, exportDir };
+    const result: Extract<CliCommand, { kind: "visualize" }> = {
+      kind: "visualize",
+      exitCode: 0,
+      wikiDir,
+      port,
+      open,
+      exportDir,
+    };
+    if (noCdn) result.noCdn = true;
+    if (lang) result.lang = lang;
+    return result;
   }
 
   if (argv[0] === "ingest") {

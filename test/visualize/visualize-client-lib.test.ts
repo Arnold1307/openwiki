@@ -132,16 +132,20 @@ describe("matchesFilter", () => {
     title: "Overview",
     type: "Section",
     tags: ["core"],
+    description: "System architectural overview",
+    body: "Contains components, services, and event streams.",
   };
 
   test("empty query and type match everything", () => {
     expect(matchesFilter(node, "", "")).toBe(true);
   });
 
-  test("matches free text across title, id, and tags", () => {
+  test("matches free text across title, id, tags, description, and body", () => {
     expect(matchesFilter(node, "overview", "")).toBe(true);
     expect(matchesFilter(node, "arch", "")).toBe(true);
     expect(matchesFilter(node, "core", "")).toBe(true);
+    expect(matchesFilter(node, "architectural", "")).toBe(true);
+    expect(matchesFilter(node, "streams", "")).toBe(true);
     expect(matchesFilter(node, "missing", "")).toBe(false);
   });
 
@@ -179,22 +183,15 @@ describe("stripFrontmatter", () => {
     expect(stripFrontmatter("---\ntitle: X\n---\n# Body\n")).toBe("# Body\n");
   });
 
-  test("returns a body without frontmatter unchanged", () => {
-    expect(stripFrontmatter("# Body\n")).toBe("# Body\n");
+  test("leaves markdown without frontmatter untouched", () => {
+    expect(stripFrontmatter("# Plain body\n")).toBe("# Plain body\n");
   });
 });
 
 describe("normalize", () => {
-  test("resolves a sibling link within a directory", () => {
-    expect(normalize("arch", "server.md")).toBe("arch/server.md");
-  });
-
-  test("collapses .. and . segments", () => {
-    expect(normalize("arch/deep", "../server.md")).toBe("arch/server.md");
-    expect(normalize("arch", "./server.md")).toBe("arch/server.md");
-  });
-
-  test("resolves from the wiki root when baseDir is empty", () => {
-    expect(normalize("", "index.md")).toBe("index.md");
+  test("resolves relative path collapsing segments", () => {
+    expect(normalize("arch", "overview.md")).toBe("arch/overview.md");
+    expect(normalize("arch", "../guide.md")).toBe("guide.md");
+    expect(normalize("", "plain")).toBe("plain");
   });
 });

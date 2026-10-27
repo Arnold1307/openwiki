@@ -3,7 +3,7 @@
  * distribution directory. The list is explicit so adding another asset is a
  * one-line change, and every copy is verified before the build can succeed.
  */
-const { copyFileSync, existsSync, statSync } = require("node:fs");
+const { copyFileSync, existsSync, mkdirSync, statSync } = require("node:fs");
 const path = require("node:path");
 
 /** Browser assets required by the compiled visualizer. */
@@ -16,6 +16,86 @@ const ASSETS = [
       "dist",
       "visualize",
       "styles.css",
+    ),
+  },
+];
+
+/** Vendor browser assets copied for offline visualizer use. */
+const VENDOR_ASSETS = [
+  {
+    name: "force-graph.min.js",
+    source: path.resolve(
+      __dirname,
+      "..",
+      "node_modules",
+      "force-graph",
+      "dist",
+      "force-graph.min.js",
+    ),
+    destination: path.resolve(
+      __dirname,
+      "..",
+      "dist",
+      "visualize",
+      "vendor",
+      "force-graph.min.js",
+    ),
+  },
+  {
+    name: "marked.min.js",
+    source: path.resolve(
+      __dirname,
+      "..",
+      "node_modules",
+      "marked",
+      "lib",
+      "marked.umd.js",
+    ),
+    destination: path.resolve(
+      __dirname,
+      "..",
+      "dist",
+      "visualize",
+      "vendor",
+      "marked.min.js",
+    ),
+  },
+  {
+    name: "purify.min.js",
+    source: path.resolve(
+      __dirname,
+      "..",
+      "node_modules",
+      "dompurify",
+      "dist",
+      "purify.min.js",
+    ),
+    destination: path.resolve(
+      __dirname,
+      "..",
+      "dist",
+      "visualize",
+      "vendor",
+      "purify.min.js",
+    ),
+  },
+  {
+    name: "mermaid.min.js",
+    source: path.resolve(
+      __dirname,
+      "..",
+      "node_modules",
+      "mermaid",
+      "dist",
+      "mermaid.min.js",
+    ),
+    destination: path.resolve(
+      __dirname,
+      "..",
+      "dist",
+      "visualize",
+      "vendor",
+      "mermaid.min.js",
     ),
   },
 ];
@@ -41,6 +121,15 @@ function copyAsset({ source, destination }) {
 
 function main() {
   for (const asset of ASSETS) copyAsset(asset);
+  for (const vendor of VENDOR_ASSETS) {
+    if (existsSync(vendor.source)) {
+      const destDir = path.dirname(vendor.destination);
+      if (!existsSync(destDir)) {
+        mkdirSync(destDir, { recursive: true });
+      }
+      copyAsset(vendor);
+    }
+  }
   const noun = ASSETS.length === 1 ? "asset" : "assets";
   console.log(`copy-visualize-assets: copied ${ASSETS.length} ${noun}`);
 }
@@ -58,4 +147,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { ASSETS, copyAsset };
+module.exports = { ASSETS, VENDOR_ASSETS, copyAsset };

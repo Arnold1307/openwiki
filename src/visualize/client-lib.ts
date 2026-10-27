@@ -26,6 +26,16 @@ export interface FilterableNode {
    * @default undefined - treated as no tags.
    */
   tags?: readonly string[];
+
+  /**
+   * One-line page summary.
+   */
+  description?: string;
+
+  /**
+   * Markdown page body.
+   */
+  body?: string;
 }
 
 /**
@@ -141,8 +151,9 @@ export function matchesFilter(
   query: string,
   type: string,
 ): boolean {
-  const haystack = `${node.title} ${node.id} ${(node.tags ?? []).join(" ")}`;
-  const matchesQuery = !query || haystack.toLowerCase().includes(query);
+  const q = query.trim().toLowerCase();
+  const haystack = `${node.title} ${node.id} ${node.description ?? ""} ${(node.tags ?? []).join(" ")} ${node.body ?? ""}`;
+  const matchesQuery = !q || haystack.toLowerCase().includes(q);
   const matchesType = !type || node.type === type;
   return matchesQuery && matchesType;
 }

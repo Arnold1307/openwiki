@@ -323,12 +323,12 @@ let lastSig = "";
 /**
  * Active search text. Reserved for a future search box; "" means "match all".
  */
-const filterQ = "";
+let filterQ = "";
 
 /**
  * Active type filter. Reserved for a future filter UI; "" means "match all".
  */
-const filterType = "";
+let filterType = "";
 
 /** True when this client was emitted as a static visualizer export. */
 const isStaticExport = document.documentElement.dataset.staticExport === "true";
@@ -416,6 +416,26 @@ function buildLegend(): void {
         `<div class="item"><span class="swatch" style="background:${colorForType[t]}"></span>${escapeHtml(t)}</div>`,
     )
     .join("");
+
+  const filterSelect = document.querySelector<HTMLSelectElement>("#filter-type");
+  if (filterSelect) {
+    const previousVal = filterSelect.value;
+    const currentLang =
+      document.documentElement.dataset.lang ||
+      document.documentElement.lang ||
+      "en";
+    const allTypesLabel = currentLang.startsWith("de")
+      ? "Alle Typen"
+      : "All types";
+    filterSelect.innerHTML =
+      `<option value="">${allTypesLabel}</option>` +
+      graph.types
+        .map((t) => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`)
+        .join("");
+    if (previousVal && graph.types.includes(previousVal)) {
+      filterSelect.value = previousVal;
+    }
+  }
 }
 
 /**
@@ -432,7 +452,7 @@ function buildSidebar(): void {
     }))
     .filter((g) => g.items.length);
   const head =
-    `<div class="sb-head"><span class="sb-title">Pages</span>` +
+    `<div class="sb-head"><span class="sb-title">${(document.documentElement.dataset.lang || "en").startsWith("de") ? "Seiten" : "Pages"}</span>` +
     `<span class="sb-count">${graph.nodes.length}</span></div>`;
   const body = groups
     .map((g) => {
@@ -692,7 +712,7 @@ function renderReader(id: string): void {
     })
     .join("");
   const back = n.backlinks.length
-    ? `<div class="backlinks"><span class="eyebrow">Referenced by</span>${backEls}</div>`
+    ? `<div class="backlinks"><span class="eyebrow">${(document.documentElement.dataset.lang || "en").startsWith("de") ? "Verlinkt von" : "Referenced by"}</span>${backEls}</div>`
     : "";
   // The page body is rendered as markdown, and marked passes raw HTML through, so
   // sanitize before innerHTML: DOMPurify strips scripts, event handlers, and unsafe
@@ -763,6 +783,34 @@ function renderMermaid(): void {
     } catch {
       // Diagram render failures are non-fatal; leave the source block in place.
     }
+  }
+}
+
+
+function initSearchAndFilter(): void {
+  const searchInput = document.querySelector<HTMLInputElement>("#search");
+  const filterSelect =
+    document.querySelector<HTMLSelectElement>("#filter-type");
+
+  const onFilterChange = (): void => {
+    refreshSidebarFilter();
+    if (G) {
+      G.pauseAnimation().resumeAnimation();
+    }
+  };
+
+  if (searchInput) {
+    searchInput.addEventListener("input", () => {
+      filterQ = searchInput.value.trim().toLowerCase();
+      onFilterChange();
+    });
+  }
+
+  if (filterSelect) {
+    filterSelect.addEventListener("change", () => {
+      filterType = filterSelect.value;
+      onFilterChange();
+    });
   }
 }
 
@@ -880,11 +928,11 @@ function toast(msg: string): void {
 function connectSSE(): void {
   const es = new EventSource("/events");
   es.addEventListener("reload", () => {
-    void load(false).then(() => toast("Wiki updated"));
+    void load(false).then(() => toast((document.documentElement.dataset.lang || "en").startsWith("de") ? "Wiki aktualisiert" : "Wiki updated"));
   });
   es.onerror = (): void => {
     $("#live").classList.add("stale");
-    $("#live-text").textContent = "Reconnecting";
+    $("#live-text").textContent = (document.documentElement.dataset.lang || "en").startsWith("de") ? "Neu verbinden" : "Reconnecting";
   };
   es.onopen = (): void => {
     $("#live").classList.remove("stale");
@@ -919,7 +967,8 @@ function initGraphPanelControls(): void {
     splitterEl.classList.toggle("hidden", collapsed);
     overlayEl.style.display = collapsed ? "none" : "";
     toggleBtn.classList.toggle("active", collapsed);
-    toggleBtn.title = collapsed ? "Show graph" : "Hide graph";
+    const isDe = (document.documentElement.dataset.lang || "en").startsWith("de");
+    toggleBtn.title = collapsed ? (isDe ? "Graph einblenden" : "Show graph") : (isDe ? "Graph ausblenden" : "Hide graph");
   }
   setCollapsed(collapsed);
 
@@ -964,6 +1013,7 @@ function initGraphPanelControls(): void {
 // Wire the theme toggle and load the graph. Only the live server supplies SSE reloads.
 $("#theme").addEventListener("click", toggleTheme);
 initGraphPanelControls();
+initSearchAndFilter();
 mermaid.initialize({ startOnLoad: false, theme: "dark" });
 marked.setOptions({ breaks: false, gfm: true });
 void load(true).then(() => {

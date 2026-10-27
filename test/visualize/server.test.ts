@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { createRequestHandler } from "../../src/visualize/server.ts";
 import type { WikiGraph } from "../../src/visualize/graph.ts";
-import { PAGE } from "../../src/visualize/page.ts";
+import { OFFLINE_CSP, PAGE } from "../../src/visualize/page.ts";
 
 /**
  * A minimal wiki graph. The handler only serializes it, so the exact shape is
@@ -96,11 +96,14 @@ describe("createRequestHandler", () => {
       clientLibJs: "/* client-lib */",
       stylesCss: "/* styles */",
       sseClients,
+      vendorAssets: {
+        "force-graph.min.js": "/* force-graph vendor */",
+      },
     });
   });
 
   test.each(["/", "/index.html"])(
-    "%s serves the page with the strict CSP header",
+    "%s serves the visualizer page with the strict Content-Security-Policy",
     (url) => {
       const { req } = makeRequest(url);
       const out = makeResponse();
@@ -109,51 +112,39 @@ describe("createRequestHandler", () => {
 
       expect(out.statusCode).toBe(200);
       expect(out.headers["content-type"]).toBe("text/html; charset=utf-8");
+      expect(out.headers["content-security-policy"]).toContain("default-src 'none'");
+      expect(out.headers["content-security-policy"]).not.toContain("'unsafe-inline';");
       expect(out.body).toBe(PAGE);
-
-      // The CSP must lock scripts to self + the jsdelivr CDN with no inline
-      // scripts; only styles may be inline. This is the anti-XSS/supply-chain
-      // boundary and must not drift.
-      const csp = out.headers["content-security-policy"];
-      expect(csp).toBe(
-        [
-          "default-src 'none'",
-          "script-src 'self' https://cdn.jsdelivr.net",
-          "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-          "img-src 'self' data:",
-          "font-src 'self' https://fonts.gstatic.com",
-          "connect-src 'self'",
-          "base-uri 'none'",
-          "form-action 'none'",
-        ].join("; "),
-      );
-      expect(csp).not.toContain("script-src 'self' 'unsafe-inline'");
     },
   );
 
-  test("/client.js serves the injected client module", () => {
+  test("/client.js serves the client module", () => {
     const { req } = makeRequest("/client.js");
     const out = makeResponse();
 
     handler(req, out.res);
 
     expect(out.statusCode).toBe(200);
-    expect(out.headers["content-type"]).toBe("text/javascript; charset=utf-8");
+    expect(out.headers["content-type"]).toBe(
+      "text/javascript; charset=utf-8",
+    );
     expect(out.body).toBe("/* client */");
   });
 
-  test("/client-lib.js serves the injected client-lib module", () => {
+  test("/client-lib.js serves the client-lib module", () => {
     const { req } = makeRequest("/client-lib.js");
     const out = makeResponse();
 
     handler(req, out.res);
 
     expect(out.statusCode).toBe(200);
-    expect(out.headers["content-type"]).toBe("text/javascript; charset=utf-8");
+    expect(out.headers["content-type"]).toBe(
+      "text/javascript; charset=utf-8",
+    );
     expect(out.body).toBe("/* client-lib */");
   });
 
-  test("/styles.css serves the injected stylesheet", () => {
+  test("/styles.css serves the visualizer stylesheet", () => {
     const { req } = makeRequest("/styles.css");
     const out = makeResponse();
 
@@ -162,6 +153,50 @@ describe("createRequestHandler", () => {
     expect(out.statusCode).toBe(200);
     expect(out.headers["content-type"]).toBe("text/css; charset=utf-8");
     expect(out.body).toBe("/* styles */");
+  });
+
+  test("/vendor/:name serves vendor scripts when provided", () => {
+    const { req } = makeRequest("/vendor/force-graph.min.js");
+    const out = makeResponse();
+
+    handler(req, out.res);
+
+    expect(out.statusCode).toBe(200);
+    expect(out.headers["content-type"]).toBe(
+      "text/javascript; charset=utf-8",
+    );
+    expect(out.body).toBe("/* force-graph vendor */");
+  });
+
+  test("/vendor/:name returns 404 for unknown vendor script", () => {
+    const { req } = makeRequest("/vendor/non-existent.js");
+    const out = makeResponse();
+
+    handler(req, out.res);
+
+    expect(out.statusCode).toBe(404);
+    expect(out.body).toBe("Not found");
+  });
+
+  test("serves custom pageHtml and csp when configured", () => {
+    const customHandler = createRequestHandler({
+      getGraph: () => graph,
+      clientJs: "/* client */",
+      clientLibJs: "/* client-lib */",
+      stylesCss: "/* styles */",
+      sseClients,
+      pageHtml: "<html>custom</html>",
+      csp: OFFLINE_CSP,
+    });
+
+    const { req } = makeRequest("/");
+    const out = makeResponse();
+
+    customHandler(req, out.res);
+
+    expect(out.statusCode).toBe(200);
+    expect(out.headers["content-security-policy"]).toBe(OFFLINE_CSP);
+    expect(out.body).toBe("<html>custom</html>");
   });
 
   test("/api/graph serves the live graph as JSON", () => {
