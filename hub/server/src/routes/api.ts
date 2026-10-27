@@ -15,7 +15,6 @@ import {
   listProjects,
   ProjectSourceError,
   setProjectEnabled,
-  syncDiscovery,
   type Project,
 } from "../store/projects.js";
 import {
@@ -24,6 +23,7 @@ import {
   snapshotForSha,
 } from "../store/snapshots.js";
 import { snapshotDir, syncProject, type SyncDeps } from "../sync/sync-project.js";
+import { runScanAll } from "../sync/scan-all.js";
 import { wikiStaleness } from "../sync/staleness.js";
 import { servedProjects, servedWiki } from "../wikis.js";
 
@@ -141,15 +141,7 @@ export function registerApiRoutes(app: FastifyInstance, deps: HubDeps): void {
 
   app.post("/api/scan-all", async (_request, reply) => {
     try {
-      const discovered = (
-        await Promise.all(config.groups.map((group) => client.listGroupProjects(group)))
-      ).flat();
-      const changes = syncDiscovery(db, discovered);
-      const active = listProjects(db).filter((p) => p.enabled && !p.archived);
-      for (const project of active) {
-        void queue.run(() => syncProject(syncDeps, project));
-      }
-      return reply.code(202).send({ ...changes, queued: active.length });
+      return reply.code(202).send(await runScanAll(deps));
     } catch (error) {
       const failure = failureFor(error);
       return reply.code(failure.status).send({ error: failure.error });

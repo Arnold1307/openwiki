@@ -19,3 +19,10 @@ export interface HubDeps {
 }
 
 export type { GitLabProject };
+
+declare module "fastify" {
+  interface FastifyInstance {
+    /** Services of the running server; exposed for tests that wait on the queue. */
+    hubDeps: HubDeps;
+  }
+}
