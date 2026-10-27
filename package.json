@@ -131,6 +131,7 @@
   "packageManager": "pnpm@11.25.0",
   "exports": {
     "./package.json": "./package.json",
-    "./retrieval": "./dist/retrieval/wiki.js"
+    "./retrieval": "./dist/retrieval/wiki.js",
+    "./diagnostics": "./dist/platform/diagnostics.js"
   }
 }
