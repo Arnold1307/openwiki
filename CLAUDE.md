@@ -58,3 +58,9 @@ Project skills live in `.claude/skills/`. Use them when the task matches:
 ## Hub work
 
 The Hub (multi-project GitLab portal) is specified but not yet implemented. Spec: `docs/superpowers/specs/2026-07-08-openwiki-hub-design.md`. Plan: `docs/superpowers/plans/2026-07-08-openwiki-hub.md`. Start from the `hub-implementation` skill.
+
+## Fork status and role in the SDLC landscape (2026-10-26)
+
+- This fork is **337 commits behind** `origin/main` (`langchain-ai/openwiki`) and 4 commits ahead (agent onboarding, Hub spec and plan). The README describes upstream behaviour as of July 2026; check upstream before relying on CLI flags or provider lists, and rebase before new feature work.
+- Fork-specific changes stay out of `README.md` to keep merges simple; they live here and under `docs/superpowers/`.
+- In the SDLC project landscape OpenWiki supplies repository documentation as context: for the Prüfstand review pipeline (the `openwiki/` folder as review context, referenced by path and commit) and for ACTOR (context output). Open items: `TODO.md`.
