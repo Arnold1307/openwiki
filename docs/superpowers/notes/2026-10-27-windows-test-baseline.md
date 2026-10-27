@@ -3,19 +3,19 @@
 **Lauf:** `pnpm test` (Typecheck, Build, Vitest mit Coverage) auf `305599f`, Windows 11, Node 24.22.1.
 **Ergebnis:** 3394 Tests bestanden, 6 übersprungen, **42 fehlgeschlagen** in 18 Dateien (von 241).
 
-Die Zuordnung unten ist eine **Einschätzung aus den Fehlermeldungen**, nicht bestätigt. Bestätigen heißt: dieselben Dateien unter Linux (CI-Referenz, Node 22/24) laufen lassen. Solange das nicht passiert ist, gilt jede Zeile als „wahrscheinlich Umgebung“.
+**Gegenprobe unter Linux** (WSL Ubuntu, Node 24.22.1, gleicher Commit `305599f`): 3439 bestanden, 3 übersprungen, **0 fehlgeschlagen**. Alle 42 Windows-Fehler sind damit umgebungsbedingt, keiner ist ein Fehler im Code.
 
-## Wahrscheinlich Windows-spezifisch
+## Windows-spezifische Ursachen (unter Linux grün)
 
 | Muster                                     | Betroffene Dateien                                                                                                                                         | Beleg in der Fehlermeldung                                                                                    |
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | Zeilenenden CRLF                           | `evals/ledger/replay/git-replay.test.ts` (4 Tests)                                                                                                         | `expected 'one\r\n' to be 'one\n'`                                                                            |
 | POSIX-Dateirechte (0700, 0600, Modus-Bits) | `test/config/openwiki-home.test.ts` (4), `test/integrations/config-adapters.test.ts` (1), `test/integrations/installer.test.ts` (9)                        | `expected 438 to be 448`, `expected 438 to be 384`                                                            |
 | SQLite-Datei gesperrt beim Löschen         | `test/agent/claims-agent-integration.test.ts` (3), `test/agent/docs-only-backend.test.ts` (3), `test/agent/personal-shell-boundary.test.ts` (Suite-Fehler) | `EBUSY: resource busy or locked, unlink …openwiki.sqlite`                                                     |
-| Atomares Umbenennen schlägt fehl           | `test/generation/page-manifest.test.ts` (1), `test/generation/repository-run.test.ts` (1)                                                                  | Windows verweigert `rename`, solange eine Datei offen ist (Vermutung, nicht geprüft)                          |
+| Atomares Umbenennen schlägt fehl           | `test/generation/page-manifest.test.ts` (1), `test/generation/repository-run.test.ts` (1)                                                                  | Windows verweigert `rename`, solange eine Datei offen ist (vermutet)                          |
 | Darwin-spezifischer Test                   | `test/scheduling/schedules-launchd.test.ts` (1)                                                                                                            | Testname „darwin native install“. Auf Windows sollte er übersprungen werden. Prüfen, ob ein Skip-Guard fehlt. |
 
-## Unklar, Ursache offen
+## Einzelfälle (unter Linux grün, Ursache vermutlich Windows)
 
 | Datei                                                | Fehler                                                     | Nächster Schritt                                                |
 | ---------------------------------------------------- | ---------------------------------------------------------- | --------------------------------------------------------------- |
