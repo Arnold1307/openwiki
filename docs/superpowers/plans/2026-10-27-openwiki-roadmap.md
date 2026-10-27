@@ -15,6 +15,10 @@
   `X-OpenWiki-SHA` bestätigt den Ref.
 - Playwright-End-to-End-Smoke-Test für Übersicht → Projekt → Doku-Navigation →
   Suche bei gesperrtem externem Netz implementiert (`hub/web/e2e/smoke.spec.ts`).
+- GitLab-CI-Beispiel (`examples/openwiki-update.gitlab-ci.yml`) verbessert:
+  Schleifenschutz gegen Rekursion nach Doku-Merges, Wiederverwendung/Aktualisierung
+  bestehender Merge Requests auf einem stabilen `openwiki/update`-Branch, Entfernung
+  transienter `.run.json` und Ausschluss von GitHub-Workflow-Dateien.
 - Server- und Web-Tests, Typechecks, E2E-Smoke-Tests, Container-Build und `/healthz`
   wurden erfolgreich geprüft.
 
@@ -24,10 +28,7 @@
    `openwiki_search`, `openwiki_read` und `openwiki_list_wikis` abstimmen.
 2. Mit SpecLab das Ref-Format `openwiki/<seite>.md#anker@sha` und das Feld
    `changedSince` abstimmen; danach den Ref-Resolver implementieren.
-3. GitLab-CI-Beispiel verbessern: Schleifenschutz nach Doku-Merge,
-   vorhandenes Merge Request aktualisieren und keine GitHub-Dateien
-   committen.
-4. Upstream-Visualizer optional ohne CDN ausliefern, Suche anschließen und
+3. Upstream-Visualizer optional ohne CDN ausliefern, Suche anschließen und
    Oberfläche übersetzbar machen.
 
 ## Betriebsannahmen
