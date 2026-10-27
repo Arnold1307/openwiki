@@ -1,0 +1,118 @@
+:root {
+  color-scheme: light dark;
+  --fg: #1d1f23;
+  --muted: #6b7280;
+  --accent: #2563eb;
+  --ok: #15803d;
+  --warn: #b45309;
+  --line: #d1d5db;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.5;
+}
+
+body {
+  margin: 0;
+  color: var(--fg);
+}
+
+header {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+header nav {
+  display: flex;
+  gap: 1rem;
+}
+
+header a[aria-current="page"] {
+  font-weight: 600;
+}
+
+main {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.project-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.project {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+}
+
+.badge {
+  justify-self: start;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  border: 1px solid currentColor;
+}
+
+.badge--ok { color: var(--ok); }
+.badge--warn { color: var(--warn); }
+.badge--muted { color: var(--muted); }
+
+.docs {
+  display: grid;
+  grid-template-columns: 14rem 1fr;
+  gap: 2rem;
+}
+
+.docs nav ul {
+  list-style: none;
+  padding: 0;
+}
+
+.docs a[aria-current="page"] {
+  font-weight: 600;
+}
+
+.markdown img {
+  max-width: 100%;
+}
+
+.markdown pre {
+  overflow-x: auto;
+  padding: 0.75rem;
+  background: rgba(127, 127, 127, 0.12);
+  border-radius: 0.375rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+input[type="search"],
+input[type="url"] {
+  width: 100%;
+  max-width: 36rem;
+  padding: 0.4rem 0.6rem;
+}
+
+@media (max-width: 40rem) {
+  .docs {
+    grid-template-columns: 1fr;
+  }
+}
