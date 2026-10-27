@@ -49,13 +49,15 @@ async function connect(url: string) {
 }
 
 describe("MCP over HTTP", () => {
-  it("lists the three retrieval tools", async () => {
+  it("lists all available retrieval tools including ref-resolver and read_at", async () => {
     const url = await startHub();
     const client = await connect(url);
     const { tools } = await client.listTools();
     expect(tools.map((tool) => tool.name).sort()).toEqual([
       "openwiki_list_wikis",
       "openwiki_read",
+      "openwiki_read_at",
+      "openwiki_resolve_ref",
       "openwiki_search",
     ]);
     await client.close();
@@ -88,6 +90,52 @@ describe("MCP over HTTP", () => {
     expect((read.content as Array<{ text: string }>)[0]!.text).toContain(
       "exponential backoff",
     );
+    await client.close();
+  });
+
+  it("resolves SpecLab ref via openwiki_resolve_ref tool", async () => {
+    const url = await startHub();
+    const client = await connect(url);
+
+    const resolveResult = await client.callTool({
+      name: "openwiki_resolve_ref",
+      arguments: {
+        ref: "platform/core/openwiki/quickstart.md#retry-handling@sha-1",
+      },
+    });
+    expect(resolveResult.isError).toBeFalsy();
+    const parsed = JSON.parse(
+      (resolveResult.content as Array<{ text: string }>)[0]!.text,
+    );
+    expect(parsed.projectPath).toBe("platform/core");
+    expect(parsed.sha).toBe("sha-1");
+    expect(parsed.content).toContain("exponential backoff");
+    expect(parsed.changedSince).toBe(false);
+
+    await client.close();
+  });
+
+  it("reads content at a specific commit via openwiki_read_at tool", async () => {
+    const url = await startHub();
+    const client = await connect(url);
+
+    const readAtResult = await client.callTool({
+      name: "openwiki_read_at",
+      arguments: {
+        project: "platform/core",
+        sha: "sha-1",
+        page: "openwiki/quickstart.md",
+        anchor: "retry-handling",
+      },
+    });
+    expect(readAtResult.isError).toBeFalsy();
+    const parsed = JSON.parse(
+      (readAtResult.content as Array<{ text: string }>)[0]!.text,
+    );
+    expect(parsed.project).toBe("platform/core");
+    expect(parsed.sha).toBe("sha-1");
+    expect(parsed.content).toContain("exponential backoff");
+
     await client.close();
   });
 

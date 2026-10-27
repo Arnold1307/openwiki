@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
 import type { HubDeps } from "../deps.js";
+import { resolveSpecLabRef } from "../retrieval/ref-resolver.js";
 import { readSection, searchSnapshots } from "../retrieval/search.js";
 import { getProjectByPath } from "../store/projects.js";
 import { servedProjects, servedWiki } from "../wikis.js";
@@ -80,6 +81,62 @@ export function createMcpServer(deps: HubDeps): McpServer {
           syncedAt: wiki.latest.syncedAt,
         })),
       ),
+  );
+
+  server.registerTool(
+    "openwiki_resolve_ref",
+    {
+      description:
+        "Resolve a SpecLab reference ([project/]openwiki/<page>.md[#anchor][@sha]) with content and change-detection against latest or baseline commit.",
+      inputSchema: {
+        ref: z.string().min(1).describe("SpecLab ref string (e.g. 'openwiki/quickstart.md#retry-handling@sha-1' or 'platform/core/openwiki/quickstart.md#retry-handling@sha-1')"),
+        project: z.string().min(1).optional().describe("Optional project path or ID if not embedded in the ref"),
+        since: z.string().min(1).optional().describe("Optional baseline commit SHA to compare against for changedSince"),
+      },
+    },
+    async ({ ref, project, since }) => {
+      try {
+        const resolved = await resolveSpecLabRef(deps, { ref, project, since });
+        return textResult(resolved);
+      } catch (error) {
+        return {
+          isError: true,
+          ...textResult({ error: error instanceof Error ? error.message : String(error) }),
+        };
+      }
+    },
+  );
+
+  server.registerTool(
+    "openwiki_read_at",
+    {
+      description:
+        "Read a specific section or page from a project wiki at an exact commit SHA.",
+      inputSchema: {
+        project: z.string().min(1).describe("Project path or ID"),
+        sha: z.string().min(1).describe("Commit SHA"),
+        page: z.string().min(1).describe("Wiki page path"),
+        anchor: z.string().min(1).optional().describe("Optional section heading anchor"),
+      },
+    },
+    async ({ project, sha, page, anchor }) => {
+      const ref = `${page}${anchor ? `#${anchor}` : ""}@${sha}`;
+      try {
+        const resolved = await resolveSpecLabRef(deps, { ref, project });
+        return textResult({
+          project: resolved.projectPath,
+          sha: resolved.sha,
+          page: resolved.page,
+          anchor: resolved.anchor,
+          content: resolved.content,
+        });
+      } catch (error) {
+        return {
+          isError: true,
+          ...textResult({ error: error instanceof Error ? error.message : String(error) }),
+        };
+      }
+    },
   );
 
   return server;

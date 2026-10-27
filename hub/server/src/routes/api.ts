@@ -8,6 +8,10 @@ import { listDocPages } from "../docs/tree.js";
 import type { HubDeps } from "../deps.js";
 import { GitLabAuthError, GitLabError } from "../gitlab/client.js";
 import {
+  RefResolutionError,
+  resolveSpecLabRef,
+} from "../retrieval/ref-resolver.js";
+import {
   searchSnapshots,
   type SearchableSnapshot,
 } from "../retrieval/search.js";
@@ -42,6 +46,15 @@ const PatchProjectBody = z.object({ enabled: z.boolean() });
 const SearchQuery = z.object({
   q: z.string().trim().min(1).max(500),
   limit: z.coerce.number().int().min(1).max(50).default(10),
+});
+const ProjectRefQuery = z.object({
+  ref: z.string().trim().min(1),
+  since: z.string().trim().min(1).optional(),
+});
+const GlobalRefQuery = z.object({
+  ref: z.string().trim().min(1),
+  project: z.string().trim().min(1).optional(),
+  since: z.string().trim().min(1).optional(),
 });
 
 /**
@@ -271,6 +284,53 @@ export function registerApiRoutes(app: FastifyInstance, deps: HubDeps): void {
           ["openwiki"],
         ),
       );
+    },
+  );
+
+  app.get<{ Params: { id: string }; Querystring: { ref?: string; since?: string } }>(
+    "/api/projects/:id/ref",
+    async (request, reply) => {
+      const query = ProjectRefQuery.safeParse(request.query);
+      if (!query.success) {
+        return reply.code(400).send({ error: "Pass ?ref=<reference>." });
+      }
+      const projectId = Number(request.params.id);
+      try {
+        const result = await resolveSpecLabRef(deps, {
+          ref: query.data.ref,
+          project: projectId,
+          since: query.data.since,
+        });
+        return result;
+      } catch (error) {
+        if (error instanceof RefResolutionError) {
+          return reply.code(error.statusCode).send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.get<{ Querystring: { ref?: string; project?: string; since?: string } }>(
+    "/api/ref",
+    async (request, reply) => {
+      const query = GlobalRefQuery.safeParse(request.query);
+      if (!query.success) {
+        return reply.code(400).send({ error: "Pass ?ref=<reference>." });
+      }
+      try {
+        const result = await resolveSpecLabRef(deps, {
+          ref: query.data.ref,
+          project: query.data.project,
+          since: query.data.since,
+        });
+        return result;
+      } catch (error) {
+        if (error instanceof RefResolutionError) {
+          return reply.code(error.statusCode).send({ error: error.message });
+        }
+        throw error;
+      }
     },
   );
 

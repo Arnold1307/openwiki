@@ -25,13 +25,17 @@
   - Offline-Modus mit `--no-cdn` (Server & statischer Export): Vendor-Assets (`force-graph`, `marked`, `dompurify`, `mermaid`) gebündelt in `dist/visualize/vendor/` und ohne externe CDNs ausgeliefert; angepasste restriktive Content Security Policy (`OFFLINE_CSP`).
   - Vollständige Lokalisierungsunterstützung (`--lang <de|en>`) mit Übersetzungswörterbuch (`src/visualize/i18n.ts`) für Labels, Tooltips, Statusanzeigen und Barrierefreiheit.
   - Interaktive Suche und Typ-Filter im Visualizer (`#search`, `#filter-type`), mit Live-Filterung in Graph & Seitenleiste über Titel, Pfad/ID, Typ, Tags, Kurzbeschreibung und Textkörper.
+- **SpecLab Ref-Resolver & Commit-genaue Doku-Abfrage**:
+  - Ref-Format `[<project>/]openwiki/<page.md>[#<anchor>][@<sha>]` via `hub/server/src/retrieval/ref-resolver.ts` implementiert.
+  - Dynamische Change-Detection mit `changedSince`: Vergleicht referenzierten Inhalt gegen den Baseline-Commit (`?since=<sha>`) bzw. den neuesten verfügbaren Projektstand.
+  - REST-Endpunkte: `GET /api/projects/:id/ref?ref=...&since=...` und `GET /api/ref?ref=...&project=...&since=...`.
+  - MCP-Tools: `openwiki_resolve_ref` (SpecLab-Referenzauflösung mit `changedSince`) und `openwiki_read_at` (versionierte Doku-Abfrage zu einem exakten Commit).
 
 ## Noch offen
 
-1. Mit ACTOR die gewünschte MCP-Konfiguration und den Aufruf der drei Tools
-   `openwiki_search`, `openwiki_read` und `openwiki_list_wikis` abstimmen.
-2. Mit SpecLab das Ref-Format `openwiki/<seite>.md#anker@sha` und das Feld
-   `changedSince` abstimmen; danach den Ref-Resolver implementieren.
+1. Mit ACTOR die gewünschte MCP-Konfiguration und den Aufruf der Tools
+   (`openwiki_search`, `openwiki_read`, `openwiki_list_wikis`, `openwiki_resolve_ref`, `openwiki_read_at`)
+   abstimmen und company-mcp-Konfiguration dokumentieren.
 
 ## Betriebsannahmen
 
