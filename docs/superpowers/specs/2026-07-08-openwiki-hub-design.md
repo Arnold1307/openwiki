@@ -57,15 +57,15 @@ openwiki/
 
 ### Konfiguration (Umgebungsvariablen / `.env` des Servers)
 
-| Variable | Zweck |
-|---|---|
-| `GITLAB_BASE_URL` | Basis-URL der selbst gehosteten Instanz |
-| `GITLAB_TOKEN` | Token mit `read_api` + Clone-Rechten |
-| `OPENWIKI_HUB_GROUPS` | GitLab-Gruppenpfade für Auto-Discovery (kommasepariert) |
-| `OPENWIKI_HUB_SCHEDULE` | Cron-Ausdruck für geplante Läufe (Default: täglich nachts) |
-| `OPENWIKI_HUB_DATA_DIR` | Datenverzeichnis (Default `./data`) |
-| `OPENWIKI_HUB_CONCURRENCY` | Parallele Scans (Default 1) |
-| `OPENWIKI_PROVIDER`, Provider-API-Keys | unverändert die bestehenden openwiki-Variablen |
+| Variable                               | Zweck                                                      |
+| -------------------------------------- | ---------------------------------------------------------- |
+| `GITLAB_BASE_URL`                      | Basis-URL der selbst gehosteten Instanz                    |
+| `GITLAB_TOKEN`                         | Token mit `read_api` + Clone-Rechten                       |
+| `OPENWIKI_HUB_GROUPS`                  | GitLab-Gruppenpfade für Auto-Discovery (kommasepariert)    |
+| `OPENWIKI_HUB_SCHEDULE`                | Cron-Ausdruck für geplante Läufe (Default: täglich nachts) |
+| `OPENWIKI_HUB_DATA_DIR`                | Datenverzeichnis (Default `./data`)                        |
+| `OPENWIKI_HUB_CONCURRENCY`             | Parallele Scans (Default 1)                                |
+| `OPENWIKI_PROVIDER`, Provider-API-Keys | unverändert die bestehenden openwiki-Variablen             |
 
 ## Datenhaltung
 
@@ -133,18 +133,18 @@ LLM-Kosten und Serverlast zu begrenzen.
 
 ## REST-API
 
-| Endpoint | Zweck |
-|---|---|
-| `GET /api/projects` | Projektliste mit Status |
-| `POST /api/projects` | Projekt manuell hinzufügen (URL) |
-| `PATCH /api/projects/:id` | aktivieren/deaktivieren |
-| `DELETE /api/projects/:id` | nur für manuelle Projekte |
-| `POST /api/projects/:id/scan` | Einzel-Scan auslösen |
-| `POST /api/scan-all` | Discovery + Gesamtlauf auslösen |
-| `GET /api/projects/:id/scans` | Scan-Historie inkl. Logs |
-| `GET /api/projects/:id/docs` | Doku-Dateibaum |
-| `GET /api/projects/:id/docs/file?path=…` | Markdown-Inhalt einer Datei |
-| `GET /api/events` | SSE-Stream (Scan-Status, Live-Logs) |
+| Endpoint                                 | Zweck                               |
+| ---------------------------------------- | ----------------------------------- |
+| `GET /api/projects`                      | Projektliste mit Status             |
+| `POST /api/projects`                     | Projekt manuell hinzufügen (URL)    |
+| `PATCH /api/projects/:id`                | aktivieren/deaktivieren             |
+| `DELETE /api/projects/:id`               | nur für manuelle Projekte           |
+| `POST /api/projects/:id/scan`            | Einzel-Scan auslösen                |
+| `POST /api/scan-all`                     | Discovery + Gesamtlauf auslösen     |
+| `GET /api/projects/:id/scans`            | Scan-Historie inkl. Logs            |
+| `GET /api/projects/:id/docs`             | Doku-Dateibaum                      |
+| `GET /api/projects/:id/docs/file?path=…` | Markdown-Inhalt einer Datei         |
+| `GET /api/events`                        | SSE-Stream (Scan-Status, Live-Logs) |
 
 ## Fehlerbehandlung
 
