@@ -62,6 +62,7 @@ openwiki/
 ### Task 1: Workspace-Setup & Library-Exports
 
 **Files:**
+
 - Modify: `pnpm-workspace.yaml`
 - Modify: `package.json` (nur `exports`-Feld ergänzen)
 - Create: `vitest.config.ts` (Repo-Root)
@@ -69,6 +70,7 @@ openwiki/
 - Test: `hub/server/test/smoke.test.ts`
 
 **Interfaces:**
+
 - Consumes: bestehende Module `src/agent/index.ts` (`runOpenWikiAgent`), `src/agent/types.ts`, `src/constants.ts`, `src/env.ts` — alle bereits exportiert, aber ohne Package-Exports nicht importierbar.
 - Produces: Workspace-Paket `openwiki-hub-server`, das `import { runOpenWikiAgent } from "openwiki/agent"` und `import type { OpenWikiRunEvent } from "openwiki/agent/types"` auflösen kann. Spätere Tasks verlassen sich exakt auf diese Import-Pfade.
 
@@ -225,10 +227,12 @@ git commit -m "chore: add hub/server workspace package with openwiki library exp
 ### Task 2: Server-Konfiguration (`config.ts`)
 
 **Files:**
+
 - Create: `hub/server/src/config.ts`
 - Test: `hub/server/test/config.test.ts`
 
 **Interfaces:**
+
 - Produces:
   - `type HubConfig = { gitlabBaseUrl: string; gitlabToken: string; groups: string[]; schedule: string; dataDir: string; concurrency: number; port: number }`
   - `function loadHubConfig(env?: NodeJS.ProcessEnv): HubConfig` — wirft `Error` mit deutscher Meldung, wenn `GITLAB_BASE_URL` oder `GITLAB_TOKEN` fehlen.
@@ -305,9 +309,7 @@ export type HubConfig = {
 const DEFAULT_SCHEDULE = "0 3 * * *";
 const DEFAULT_PORT = 4600;
 
-export function loadHubConfig(
-  env: NodeJS.ProcessEnv = process.env,
-): HubConfig {
+export function loadHubConfig(env: NodeJS.ProcessEnv = process.env): HubConfig {
   return {
     gitlabBaseUrl: requireEnv(env, "GITLAB_BASE_URL").replace(/\/+$/u, ""),
     gitlabToken: requireEnv(env, "GITLAB_TOKEN"),
@@ -326,7 +328,9 @@ function requireEnv(env: NodeJS.ProcessEnv, key: string): string {
   const value = env[key]?.trim();
 
   if (!value) {
-    throw new Error(`${key} muss gesetzt sein, damit der OpenWiki Hub starten kann.`);
+    throw new Error(
+      `${key} muss gesetzt sein, damit der OpenWiki Hub starten kann.`,
+    );
   }
 
   return value;
@@ -370,10 +374,12 @@ git commit -m "feat: add hub server configuration loader"
 ### Task 3: Datenbank-Schicht (`db.ts`)
 
 **Files:**
+
 - Create: `hub/server/src/db.ts`
 - Test: `hub/server/test/db.test.ts`
 
 **Interfaces:**
+
 - Consumes: nichts aus früheren Tasks (eigenständig; better-sqlite3 ist synchron).
 - Produces (spätere Tasks nutzen exakt diese Namen):
   - `type ProjectSource = "group" | "manual"`
@@ -454,7 +460,10 @@ describe("HubDb scans", () => {
     expect(scan.status).toBe("queued");
     expect(db.hasOpenScan(project.id)).toBe(true);
 
-    db.updateScan(scan.id, { status: "running", startedAt: "2026-07-08T00:00:00Z" });
+    db.updateScan(scan.id, {
+      status: "running",
+      startedAt: "2026-07-08T00:00:00Z",
+    });
     db.appendScanLog(scan.id, "hello ");
     db.appendScanLog(scan.id, "world");
     db.updateScan(scan.id, { status: "success", commitSha: "abc123" });
@@ -513,7 +522,8 @@ export type Project = {
   archived: boolean;
 };
 
-export type ScanStatus = "queued" | "running" | "success" | "failed" | "skipped";
+export type ScanStatus =
+  "queued" | "running" | "success" | "failed" | "skipped";
 
 export type Scan = {
   id: number;
@@ -626,7 +636,9 @@ export function createHubDb(filePath: string) {
           "SELECT id, path_with_namespace FROM projects WHERE source = 'group' AND archived = 0",
         )
         .all() as { id: number; path_with_namespace: string }[];
-      const archive = db.prepare("UPDATE projects SET archived = 1 WHERE id = ?");
+      const archive = db.prepare(
+        "UPDATE projects SET archived = 1 WHERE id = ?",
+      );
       let count = 0;
 
       for (const row of rows) {
@@ -681,7 +693,10 @@ export function createHubDb(filePath: string) {
     updateScan(
       id: number,
       fields: Partial<
-        Pick<Scan, "status" | "startedAt" | "finishedAt" | "commitSha" | "error">
+        Pick<
+          Scan,
+          "status" | "startedAt" | "finishedAt" | "commitSha" | "error"
+        >
       >,
     ): void {
       const mapping = {
@@ -817,10 +832,12 @@ git commit -m "feat: add hub sqlite database layer for projects and scans"
 ### Task 4: GitLab-API-Client (`gitlab.ts`)
 
 **Files:**
+
 - Create: `hub/server/src/gitlab.ts`
 - Test: `hub/server/test/gitlab.test.ts`
 
 **Interfaces:**
+
 - Consumes: `HubConfig` aus Task 2 (nur `gitlabBaseUrl`, `gitlabToken`).
 - Produces:
   - `type GitLabProject = { gitlabProjectId: number; name: string; pathWithNamespace: string; cloneUrl: string; webUrl: string; defaultBranch: string }`
@@ -995,10 +1012,12 @@ git commit -m "feat: add gitlab group project discovery client"
 ### Task 5: Discovery (`discovery.ts`)
 
 **Files:**
+
 - Create: `hub/server/src/discovery.ts`
 - Test: `hub/server/test/discovery.test.ts`
 
 **Interfaces:**
+
 - Consumes: `HubDb` (Task 3: `upsertGroupProject`, `archiveGroupProjectsNotIn`), `listGroupProjects` (Task 4), `HubConfig` (Task 2).
 - Produces:
   - `function runDiscovery(db: HubDb, config: HubConfig, list?: typeof listGroupProjects): Promise<{ added: number; archived: number }>` — bei `config.groups.length === 0` No-Op mit `{ added: 0, archived: 0 }`.
@@ -1043,8 +1062,10 @@ describe("runDiscovery", () => {
       "team-a": [remote(1, "team-a/one")],
       "team-b": [remote(2, "team-b/two")],
     };
-    const result = await runDiscovery(db, config, async (_c, group) =>
-      byGroup[group] ?? [],
+    const result = await runDiscovery(
+      db,
+      config,
+      async (_c, group) => byGroup[group] ?? [],
     );
 
     expect(result).toEqual({ added: 2, archived: 1 });
@@ -1123,10 +1144,12 @@ git commit -m "feat: sync gitlab group projects into hub database"
 ### Task 6: Git-Sync (`git.ts`)
 
 **Files:**
+
 - Create: `hub/server/src/git.ts`
 - Test: `hub/server/test/git.test.ts`
 
 **Interfaces:**
+
 - Consumes: nichts aus früheren Tasks.
 - Produces:
   - `function buildAuthenticatedCloneUrl(cloneUrl: string, token: string): string` — bettet `oauth2:<token>@` nur bei http(s)-URLs ein; andere URLs (z. B. `file://` für Tests) unverändert.
@@ -1139,18 +1162,31 @@ git commit -m "feat: sync gitlab group projects into hub database"
 
 ```ts
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, mkdirSync } from "node:fs";
+import {
+  mkdtempSync,
+  writeFileSync,
+  readFileSync,
+  existsSync,
+  mkdirSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
-import { buildAuthenticatedCloneUrl, redactSecret, syncRepo } from "../src/git.js";
+import {
+  buildAuthenticatedCloneUrl,
+  redactSecret,
+  syncRepo,
+} from "../src/git.js";
 
 function git(args: string[], cwd: string): string {
   return execFileSync("git", args, { cwd, encoding: "utf8" });
 }
 
-function createOrigin(): { originDir: string; commit: (name: string) => string } {
+function createOrigin(): {
+  originDir: string;
+  commit: (name: string) => string;
+} {
   const originDir = mkdtempSync(path.join(os.tmpdir(), "hub-origin-"));
   git(["init", "--initial-branch=main"], originDir);
   git(["config", "user.email", "test@example.com"], originDir);
@@ -1183,7 +1219,9 @@ describe("buildAuthenticatedCloneUrl", () => {
 
 describe("redactSecret", () => {
   it("removes every occurrence of the secret", () => {
-    expect(redactSecret("x tok y tok", "tok")).toBe("x [REDACTED] y [REDACTED]");
+    expect(redactSecret("x tok y tok", "tok")).toBe(
+      "x [REDACTED] y [REDACTED]",
+    );
     expect(redactSecret("nothing", "")).toBe("nothing");
   });
 });
@@ -1217,7 +1255,9 @@ describe("syncRepo", () => {
     });
     expect(second.headSha).toBe(secondSha);
     expect(existsSync(path.join(repoDir, "two.txt"))).toBe(true);
-    expect(readFileSync(path.join(repoDir, "openwiki", "quickstart.md"), "utf8")).toBe("# hi");
+    expect(
+      readFileSync(path.join(repoDir, "openwiki", "quickstart.md"), "utf8"),
+    ).toBe("# hi");
   });
 
   it("throws redacted errors", async () => {
@@ -1343,10 +1383,12 @@ git commit -m "feat: add token-authenticated git clone and fetch helper"
 ### Task 7: Event-Bus (`events.ts`)
 
 **Files:**
+
 - Create: `hub/server/src/events.ts`
 - Test: `hub/server/test/events.test.ts`
 
 **Interfaces:**
+
 - Consumes: `ScanStatus` aus Task 3.
 - Produces (Scanner und SSE-Route nutzen exakt diese Formen):
   - `type HubEvent = { type: "scan-status"; projectId: number; scanId: number; status: ScanStatus } | { type: "scan-log"; projectId: number; scanId: number; line: string }`
@@ -1459,10 +1501,12 @@ git commit -m "feat: add hub event bus for scan status streaming"
 ### Task 8: Scanner & Warteschlange (`scanner.ts`)
 
 **Files:**
+
 - Create: `hub/server/src/scanner.ts`
 - Test: `hub/server/test/scanner.test.ts`
 
 **Interfaces:**
+
 - Consumes: `HubDb`, `Scan` (Task 3), `HubConfig` (Task 2), `EventBus` (Task 7), `syncRepo` (Task 6), `runOpenWikiAgent` + `OpenWikiRunEvent` aus `openwiki/agent` bzw. `openwiki/agent/types` (Task 1).
 - Produces (Routen in Task 10 nutzen exakt diese API):
   - `type ScannerDeps = { db: HubDb; config: HubConfig; bus: EventBus; sync?: typeof syncRepo; runAgent?: typeof runOpenWikiAgent }`
@@ -1540,7 +1584,13 @@ describe("Scanner", () => {
     const { db, project, scanner, events, agentCalls } = setup({
       agentEvents: [
         { type: "text", text: "Hallo" },
-        { type: "tool_start", call: "Execute(cmd=\"ls\")", id: "1", input: {}, name: "execute" },
+        {
+          type: "tool_start",
+          call: 'Execute(cmd="ls")',
+          id: "1",
+          input: {},
+          name: "execute",
+        },
         { type: "debug", message: "hidden" },
       ],
     });
@@ -1556,7 +1606,9 @@ describe("Scanner", () => {
     expect(stored.log).toContain("» Execute");
     expect(stored.log).not.toContain("hidden");
     expect(agentCalls[0]?.command).toBe("init");
-    expect(events.some((e) => e.type === "scan-status" && e.status === "running")).toBe(true);
+    expect(
+      events.some((e) => e.type === "scan-status" && e.status === "running"),
+    ).toBe(true);
     expect(events.some((e) => e.type === "scan-log")).toBe(true);
   });
 
@@ -1609,13 +1661,29 @@ describe("formatRunEvent", () => {
   it("formats text, tool and debug events", () => {
     expect(formatRunEvent({ type: "text", text: "abc" })).toBe("abc");
     expect(
-      formatRunEvent({ type: "tool_start", call: "Execute()", id: "1", input: null, name: "execute" }),
+      formatRunEvent({
+        type: "tool_start",
+        call: "Execute()",
+        id: "1",
+        input: null,
+        name: "execute",
+      }),
     ).toBe("\n» Execute()\n");
     expect(
-      formatRunEvent({ type: "tool_end", id: "1", name: "execute", status: "error" }),
+      formatRunEvent({
+        type: "tool_end",
+        id: "1",
+        name: "execute",
+        status: "error",
+      }),
     ).toBe("\n✗ execute\n");
     expect(
-      formatRunEvent({ type: "tool_end", id: "1", name: "execute", status: "finished" }),
+      formatRunEvent({
+        type: "tool_end",
+        id: "1",
+        name: "execute",
+        status: "finished",
+      }),
     ).toBeNull();
     expect(formatRunEvent({ type: "debug", message: "x" })).toBeNull();
   });
@@ -1836,10 +1904,12 @@ git commit -m "feat: add scan queue orchestrating git sync and agent runs"
 ### Task 9: Doku-Zugriff (`docs.ts`)
 
 **Files:**
+
 - Create: `hub/server/src/docs.ts`
 - Test: `hub/server/test/docs.test.ts`
 
 **Interfaces:**
+
 - Consumes: nichts aus früheren Tasks.
 - Produces:
   - `type DocsNode = { name: string; path: string; children?: DocsNode[] }` — `path` ist relativ zum `openwiki/`-Ordner (posix-Separatoren); Ordner haben `children`, Dateien nicht. Sortierung: `quickstart.md` zuerst auf oberster Ebene, dann Ordner, dann Dateien, jeweils alphabetisch.
@@ -2027,11 +2097,13 @@ git commit -m "feat: add safe docs tree listing and file access"
 ### Task 10: Fastify-App, REST-API & Serverstart (`app.ts`, `index.ts`)
 
 **Files:**
+
 - Create: `hub/server/src/app.ts`
 - Create: `hub/server/src/index.ts`
 - Test: `hub/server/test/app.test.ts`
 
 **Interfaces:**
+
 - Consumes: alles aus Tasks 2–9 (`loadHubConfig`, `createHubDb`, `runDiscovery`, `Scanner`, `EventBus`, `listDocsTree`, `readDocFile`, `DocsAccessError`); außerdem `loadOpenWikiEnv` aus `openwiki/env` sowie `resolveConfiguredProvider`, `getProviderApiKeyEnvKey`, `getProviderLabel` aus `openwiki/constants` (Startup-Diagnose).
 - Produces:
   - `type AppDeps = { db: HubDb; config: HubConfig; scanner: Scanner; bus: EventBus; discover?: () => Promise<{ added: number; archived: number }> }`
@@ -2434,9 +2506,12 @@ function stripLog<T extends { log: string } | null>(scan: T): T {
   return scan === null ? scan : { ...scan, log: "" };
 }
 
-export function parseProjectUrl(
-  raw: string,
-): { name: string; pathWithNamespace: string; cloneUrl: string; webUrl: string } | null {
+export function parseProjectUrl(raw: string): {
+  name: string;
+  pathWithNamespace: string;
+  cloneUrl: string;
+  webUrl: string;
+} | null {
   let url: URL;
 
   try {
@@ -2516,7 +2591,9 @@ async function main(): Promise<void> {
   const interrupted = db.markRunningScansInterrupted();
 
   if (interrupted > 0) {
-    console.warn(`${interrupted} unterbrochene Scans als fehlgeschlagen markiert.`);
+    console.warn(
+      `${interrupted} unterbrochene Scans als fehlgeschlagen markiert.`,
+    );
   }
 
   const bus = new EventBus();
@@ -2562,12 +2639,14 @@ git commit -m "feat: add hub rest api, sse endpoint and server entrypoint"
 ### Task 11: Web-Scaffold & Projektübersicht (`hub/web`)
 
 **Files:**
+
 - Create: `hub/web/package.json`, `hub/web/tsconfig.json`, `hub/web/vite.config.ts`, `hub/web/index.html`
 - Create: `hub/web/src/main.tsx`, `hub/web/src/App.tsx`, `hub/web/src/styles.css`, `hub/web/src/api.ts`, `hub/web/src/lib/status.ts`, `hub/web/src/pages/ProjectList.tsx`
 - Create (Platzhalter, werden in Task 12/13 gefüllt): `hub/web/src/pages/DocsView.tsx`, `hub/web/src/pages/Admin.tsx`
 - Test: `hub/web/src/lib/status.test.ts`
 
 **Interfaces:**
+
 - Consumes: REST-Antwortformen aus Task 10 (`GET /api/projects` → `{ projects: ProjectWithStatus[] }`).
 - Produces:
   - `api.ts`-Typen (Tasks 12/13 nutzen exakt diese): `Project`, `Scan`, `DocsNode`, `HubEvent`, `ProjectWithStatus = Project & { lastScan: Scan | null; lastSuccess: Scan | null }` sowie Funktionen `fetchProjects(): Promise<ProjectWithStatus[]>`, `addProject(url: string): Promise<void>`, `setProjectEnabled(id: number, enabled: boolean): Promise<void>`, `deleteProject(id: number): Promise<void>`, `triggerScan(id: number): Promise<void>`, `scanAll(): Promise<{ queued: number }>`, `fetchScans(id: number): Promise<Scan[]>`, `fetchDocsTree(id: number): Promise<DocsNode[]>`, `fetchDocFile(id: number, path: string): Promise<string>`, `fetchConfig(): Promise<{ groups: string[]; schedule: string; gitlabBaseUrl: string }>`
@@ -2617,20 +2696,34 @@ function scan(status: Scan["status"]): Scan {
 describe("statusInfo", () => {
   it("maps scan states to badges", () => {
     expect(statusInfo(project({})).tone).toBe("none");
-    expect(statusInfo(project({ lastScan: scan("running") })).tone).toBe("busy");
+    expect(statusInfo(project({ lastScan: scan("running") })).tone).toBe(
+      "busy",
+    );
     expect(statusInfo(project({ lastScan: scan("queued") })).tone).toBe("busy");
     expect(
-      statusInfo(project({ lastScan: scan("failed"), lastSuccess: scan("success") })).tone,
+      statusInfo(
+        project({ lastScan: scan("failed"), lastSuccess: scan("success") }),
+      ).tone,
     ).toBe("error");
     expect(statusInfo(project({ lastScan: scan("success") })).tone).toBe("ok");
-    expect(statusInfo(project({ lastScan: scan("skipped"), lastSuccess: scan("success") })).tone).toBe("ok");
+    expect(
+      statusInfo(
+        project({ lastScan: scan("skipped"), lastSuccess: scan("success") }),
+      ).tone,
+    ).toBe("ok");
   });
 
   it("uses German labels", () => {
     expect(statusInfo(project({})).label).toBe("Noch keine Doku");
-    expect(statusInfo(project({ lastScan: scan("running") })).label).toBe("Scan läuft");
-    expect(statusInfo(project({ lastScan: scan("failed") })).label).toBe("Fehler");
-    expect(statusInfo(project({ lastScan: scan("success") })).label).toBe("Doku aktuell");
+    expect(statusInfo(project({ lastScan: scan("running") })).label).toBe(
+      "Scan läuft",
+    );
+    expect(statusInfo(project({ lastScan: scan("failed") })).label).toBe(
+      "Fehler",
+    );
+    expect(statusInfo(project({ lastScan: scan("success") })).label).toBe(
+      "Doku aktuell",
+    );
   });
 });
 ```
@@ -2761,7 +2854,12 @@ export type DocsNode = {
 };
 
 export type HubEvent =
-  | { type: "scan-status"; projectId: number; scanId: number; status: Scan["status"] }
+  | {
+      type: "scan-status";
+      projectId: number;
+      scanId: number;
+      status: Scan["status"];
+    }
   | { type: "scan-log"; projectId: number; scanId: number; line: string };
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -2774,14 +2872,18 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   };
 
   if (!response.ok) {
-    throw new Error(body.error ?? `Anfrage fehlgeschlagen (${response.status})`);
+    throw new Error(
+      body.error ?? `Anfrage fehlgeschlagen (${response.status})`,
+    );
   }
 
   return body;
 }
 
 export async function fetchProjects(): Promise<ProjectWithStatus[]> {
-  const body = await request<{ projects: ProjectWithStatus[] }>("/api/projects");
+  const body = await request<{ projects: ProjectWithStatus[] }>(
+    "/api/projects",
+  );
   return body.projects;
 }
 
@@ -2934,7 +3036,9 @@ export default function ProjectList() {
   const [error, setError] = useState<string | null>(null);
 
   const reload = () => {
-    fetchProjects().then(setProjects).catch((e) => setError(String(e)));
+    fetchProjects()
+      .then(setProjects)
+      .catch((e) => setError(String(e)));
   };
 
   useEffect(reload, []);
@@ -2976,7 +3080,9 @@ export default function ProjectList() {
                 {project.lastSuccess?.finishedAt && (
                   <span className="muted">
                     Zuletzt aktualisiert:{" "}
-                    {new Date(project.lastSuccess.finishedAt).toLocaleString("de-DE")}
+                    {new Date(project.lastSuccess.finishedAt).toLocaleString(
+                      "de-DE",
+                    )}
                   </span>
                 )}
               </Link>
@@ -3044,8 +3150,12 @@ export default function Admin() {
   color-scheme: light dark;
   font-family: system-ui, sans-serif;
 }
-* { box-sizing: border-box; }
-body { margin: 0; }
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
 .app-header {
   display: flex;
   align-items: center;
@@ -3053,32 +3163,134 @@ body { margin: 0; }
   padding: 0.75rem 1.5rem;
   border-bottom: 1px solid color-mix(in srgb, currentColor 20%, transparent);
 }
-.app-header .brand { font-weight: 700; text-decoration: none; color: inherit; }
-.app-header nav { display: flex; gap: 1rem; }
-main { padding: 1.5rem; max-width: 1100px; margin: 0 auto; }
-.toolbar { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
-.toolbar input { padding: 0.5rem; min-width: 220px; }
-.project-grid { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; }
-.project-card a { display: flex; flex-direction: column; gap: 0.4rem; padding: 1rem; border: 1px solid color-mix(in srgb, currentColor 20%, transparent); border-radius: 8px; text-decoration: none; color: inherit; }
-.badge { align-self: flex-start; padding: 0.1rem 0.6rem; border-radius: 999px; font-size: 0.8rem; }
-.badge-ok { background: #16a34a33; }
-.badge-busy { background: #f59e0b33; }
-.badge-error { background: #dc262633; }
-.badge-none { background: #6b728033; }
-.muted { opacity: 0.7; font-size: 0.85rem; }
-.error-banner { background: #dc262622; border: 1px solid #dc2626; padding: 0.5rem 1rem; border-radius: 6px; }
-.docs-layout { display: grid; grid-template-columns: 260px 1fr; gap: 2rem; }
-.docs-nav ul { list-style: none; padding-left: 0.9rem; }
-.docs-nav a { text-decoration: none; color: inherit; }
-.docs-nav a.active { font-weight: 700; }
-.doc-content { min-width: 0; overflow-wrap: anywhere; }
-.doc-content pre { overflow-x: auto; padding: 0.75rem; background: color-mix(in srgb, currentColor 8%, transparent); border-radius: 6px; }
-.admin-table { width: 100%; border-collapse: collapse; }
-.admin-table td, .admin-table th { padding: 0.5rem; border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent); text-align: left; }
-.log-view { background: #0b0f14; color: #d1e3f0; padding: 0.75rem; border-radius: 6px; max-height: 320px; overflow: auto; white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 0.8rem; }
-.add-form { display: flex; gap: 0.5rem; margin: 1rem 0; }
-.add-form input { flex: 1; padding: 0.5rem; }
-button { cursor: pointer; }
+.app-header .brand {
+  font-weight: 700;
+  text-decoration: none;
+  color: inherit;
+}
+.app-header nav {
+  display: flex;
+  gap: 1rem;
+}
+main {
+  padding: 1.5rem;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+.toolbar input {
+  padding: 0.5rem;
+  min-width: 220px;
+}
+.project-grid {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1rem;
+}
+.project-card a {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 1rem;
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  border-radius: 8px;
+  text-decoration: none;
+  color: inherit;
+}
+.badge {
+  align-self: flex-start;
+  padding: 0.1rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+}
+.badge-ok {
+  background: #16a34a33;
+}
+.badge-busy {
+  background: #f59e0b33;
+}
+.badge-error {
+  background: #dc262633;
+}
+.badge-none {
+  background: #6b728033;
+}
+.muted {
+  opacity: 0.7;
+  font-size: 0.85rem;
+}
+.error-banner {
+  background: #dc262622;
+  border: 1px solid #dc2626;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+}
+.docs-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 2rem;
+}
+.docs-nav ul {
+  list-style: none;
+  padding-left: 0.9rem;
+}
+.docs-nav a {
+  text-decoration: none;
+  color: inherit;
+}
+.docs-nav a.active {
+  font-weight: 700;
+}
+.doc-content {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.doc-content pre {
+  overflow-x: auto;
+  padding: 0.75rem;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  border-radius: 6px;
+}
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.admin-table td,
+.admin-table th {
+  padding: 0.5rem;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  text-align: left;
+}
+.log-view {
+  background: #0b0f14;
+  color: #d1e3f0;
+  padding: 0.75rem;
+  border-radius: 6px;
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+}
+.add-form {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+.add-form input {
+  flex: 1;
+  padding: 0.5rem;
+}
+button {
+  cursor: pointer;
+}
 ```
 
 - [ ] **Step 5: Installieren und Tests/Build prüfen**
@@ -3111,11 +3323,13 @@ git commit -m "feat: add hub web app scaffold with project overview"
 ### Task 12: Doku-Ansicht & Link-Klassifizierung
 
 **Files:**
+
 - Create: `hub/web/src/lib/links.ts`
 - Modify: `hub/web/src/pages/DocsView.tsx` (Platzhalter ersetzen)
 - Test: `hub/web/src/lib/links.test.ts`
 
 **Interfaces:**
+
 - Consumes: `fetchProjects`, `fetchDocsTree`, `fetchDocFile`, `DocsNode` (Task 11); Route `/projekte/:id/doku/*` (Task 11); `marked` für Markdown-Rendering.
 - Produces:
   - `type DocLinkTarget = { kind: "external" } | { kind: "anchor" } | { kind: "doc"; docPath: string } | { kind: "source"; repoPath: string }`
@@ -3295,9 +3509,13 @@ export default function DocsView() {
 
   useEffect(() => {
     fetchProjects()
-      .then((projects) => setProject(projects.find((p) => p.id === projectId) ?? null))
+      .then((projects) =>
+        setProject(projects.find((p) => p.id === projectId) ?? null),
+      )
       .catch((e) => setError(String(e)));
-    fetchDocsTree(projectId).then(setTree).catch((e) => setError(String(e)));
+    fetchDocsTree(projectId)
+      .then(setTree)
+      .catch((e) => setError(String(e)));
   }, [projectId]);
 
   useEffect(() => {
@@ -3305,7 +3523,9 @@ export default function DocsView() {
     fetchDocFile(projectId, docPath)
       .then(setContent)
       .catch(() =>
-        setError("Diese Seite existiert (noch) nicht. Läuft der erste Scan noch?"),
+        setError(
+          "Diese Seite existiert (noch) nicht. Läuft der erste Scan noch?",
+        ),
       );
   }, [projectId, docPath]);
 
@@ -3340,7 +3560,8 @@ export default function DocsView() {
   return (
     <section>
       <p className="muted">
-        <Link to="/">Projekte</Link> / {project?.pathWithNamespace ?? `#${projectId}`}
+        <Link to="/">Projekte</Link> /{" "}
+        {project?.pathWithNamespace ?? `#${projectId}`}
       </p>
       <div className="docs-layout">
         <nav className="docs-nav">
@@ -3350,7 +3571,10 @@ export default function DocsView() {
           {error ? (
             <p className="error-banner">{error}</p>
           ) : (
-            <div onClick={onContentClick} dangerouslySetInnerHTML={{ __html: html }} />
+            <div
+              onClick={onContentClick}
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
           )}
         </article>
       </div>
@@ -3414,9 +3638,11 @@ git commit -m "feat: add docs viewer with wiki-style link navigation"
 ### Task 13: Verwaltungsseite mit Live-Logs
 
 **Files:**
+
 - Modify: `hub/web/src/pages/Admin.tsx` (Platzhalter ersetzen)
 
 **Interfaces:**
+
 - Consumes: `fetchProjects`, `fetchConfig`, `fetchScans`, `addProject`, `setProjectEnabled`, `deleteProject`, `triggerScan`, `scanAll`, Typen `ProjectWithStatus`, `Scan` (Task 11); `useEvents` (Task 11); `statusInfo` (Task 11).
 - Produces: Verwaltungsseite unter `/verwaltung` mit: Projekt-per-URL-Formular, Aktivieren/Deaktivieren, Löschen (nur manuelle), „Jetzt scannen" (einzeln + alle), aufklappbarer Scan-Historie mit Logs, Live-Log laufender Scans (SSE), Anzeige der Discovery-Konfiguration. Fehler von API-Aufrufen erscheinen als Banner (deckt „GitLab-API-/Token-Fehler → Warnbanner" aus dem Spec ab).
 
@@ -3455,12 +3681,16 @@ export default function Admin() {
   const [liveLog, setLiveLog] = useState("");
 
   const reload = () => {
-    fetchProjects().then(setProjects).catch((e) => setBanner(String(e)));
+    fetchProjects()
+      .then(setProjects)
+      .catch((e) => setBanner(String(e)));
   };
 
   useEffect(() => {
     reload();
-    fetchConfig().then(setConfig).catch((e) => setBanner(String(e)));
+    fetchConfig()
+      .then(setConfig)
+      .catch((e) => setBanner(String(e)));
   }, []);
 
   useEvents((event) => {
@@ -3479,7 +3709,9 @@ export default function Admin() {
   });
 
   const loadScans = (projectId: number) => {
-    fetchScans(projectId).then(setScans).catch((e) => setBanner(String(e)));
+    fetchScans(projectId)
+      .then(setScans)
+      .catch((e) => setBanner(String(e)));
   };
 
   const run = (action: () => Promise<unknown>) => {
@@ -3557,8 +3789,9 @@ export default function Admin() {
                 run(() => setProjectEnabled(project.id, !project.enabled))
               }
               onDelete={() =>
-                window.confirm(`Projekt "${project.name}" wirklich entfernen?`) &&
-                run(() => deleteProject(project.id))
+                window.confirm(
+                  `Projekt "${project.name}" wirklich entfernen?`,
+                ) && run(() => deleteProject(project.id))
               }
             />
           ))}
@@ -3637,7 +3870,9 @@ function ScanHistory(props: { scans: Scan[] }) {
       {props.scans.map((scan) => (
         <li key={scan.id}>
           <button
-            onClick={() => setOpenScanId(openScanId === scan.id ? null : scan.id)}
+            onClick={() =>
+              setOpenScanId(openScanId === scan.id ? null : scan.id)
+            }
           >
             #{scan.id} · {scan.status}
             {scan.finishedAt &&
@@ -3676,12 +3911,14 @@ git commit -m "feat: add admin page with scan controls and live logs"
 ### Task 14: Produktiv-Auslieferung, CI & Doku
 
 **Files:**
+
 - Modify: `hub/server/src/index.ts` (SPA-Auslieferung ergänzen)
 - Modify: `package.json` (Root — nur `hub:*`-Scripts ergänzen)
 - Modify: `.github/workflows/checks.yml` (Hub-Job ergänzen)
 - Create: `hub/README.md`, `hub/server/.env.example`
 
 **Interfaces:**
+
 - Consumes: `createApp` (Task 10), gebautes `hub/web/dist` (Tasks 11–13).
 - Produces: Ein Prozess, ein Port — `node hub/server/dist/index.js` liefert API **und** SPA aus. Root-Scripts: `pnpm hub:build`, `pnpm hub:start`, `pnpm hub:dev:server`, `pnpm hub:dev:web`.
 
@@ -3699,29 +3936,29 @@ import fastifyStatic from "@fastify/static";
 und in `main()` direkt **vor** `app.listen(...)` einfügen:
 
 ```ts
-  // In production the built SPA sits at hub/web/dist (relative to this file:
-  // src/ during dev via tsx, dist/ after tsc — both are one level below hub/server/).
-  const webDist = path.resolve(
-    path.dirname(fileURLToPath(import.meta.url)),
-    "..",
-    "..",
-    "web",
-    "dist",
-  );
+// In production the built SPA sits at hub/web/dist (relative to this file:
+// src/ during dev via tsx, dist/ after tsc — both are one level below hub/server/).
+const webDist = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "web",
+  "dist",
+);
 
-  if (existsSync(webDist)) {
-    await app.register(fastifyStatic, { root: webDist });
-    app.setNotFoundHandler(async (request, reply) => {
-      if (request.raw.url?.startsWith("/api/")) {
-        return reply.code(404).send({ error: "Nicht gefunden." });
-      }
+if (existsSync(webDist)) {
+  await app.register(fastifyStatic, { root: webDist });
+  app.setNotFoundHandler(async (request, reply) => {
+    if (request.raw.url?.startsWith("/api/")) {
+      return reply.code(404).send({ error: "Nicht gefunden." });
+    }
 
-      // SPA fallback: client-side routes like /projekte/1/doku/… load index.html.
-      return reply
-        .type("text/html")
-        .send(await readFile(path.join(webDist, "index.html"), "utf8"));
-    });
-  }
+    // SPA fallback: client-side routes like /projekte/1/doku/… load index.html.
+    return reply
+      .type("text/html")
+      .send(await readFile(path.join(webDist, "index.html"), "utf8"));
+  });
+}
 ```
 
 - [ ] **Step 2: Root-Scripts ergänzen**
@@ -3758,7 +3995,7 @@ OPENWIKI_HUB_PORT=4600
 
 `hub/README.md`:
 
-```markdown
+````markdown
 # OpenWiki Hub
 
 Web-Portal, das GitLab-Projekte automatisch klont, per OpenWiki-Agent
@@ -3772,6 +4009,7 @@ pnpm run build                 # baut das openwiki-Kernpaket (dist/)
 pnpm hub:dev:server            # Fastify-API auf Port 4600
 pnpm hub:dev:web               # Vite-Dev-Server auf Port 5173 (Proxy auf 4600)
 ```
+````
 
 Konfiguration über Umgebungsvariablen oder eine `.env` — siehe
 `hub/server/.env.example`. Der GitLab-Token braucht `read_api` und
@@ -3789,7 +4027,8 @@ ist für den Betrieb im internen Netz ohne Login gedacht. Scans laufen
 automatisch nach Zeitplan (`OPENWIKI_HUB_SCHEDULE`, Cron-Syntax) oder manuell
 über die Verwaltungsseite. Daten (SQLite + Klone) liegen unter
 `OPENWIKI_HUB_DATA_DIR`.
-```
+
+````
 
 - [ ] **Step 4: CI-Job ergänzen**
 
@@ -3834,7 +4073,7 @@ In `.github/workflows/checks.yml` als weiteren Job auf oberster Ebene unter `job
 
       - name: Build hub web
         run: pnpm --filter openwiki-hub-web build
-```
+````
 
 - [ ] **Step 5: Kompletter Build + alle Tests**
 

@@ -1,48 +1,44 @@
+<!-- OPENWIKI:START -->
+
 ## OpenWiki
 
-This repository has documentation located in the /openwiki directory.
+@AGENTS.md
 
-Start here:
-
-- [OpenWiki quickstart](openwiki/quickstart.md)
-
-OpenWiki includes repository overview, architecture notes, workflows, domain concepts, operations, integrations, testing guidance, and source maps.
-
-When working in this repository, read the OpenWiki quickstart first, then follow its links to the relevant architecture, workflow, domain, operation, and testing notes.
+<!-- OPENWIKI:END -->
 
 ## Commands
 
-- `pnpm install --frozen-lockfile` — install (Node >= 20, pnpm 10).
-- `pnpm run build` — `tsc` to `dist/` (runs `clean` first). `node dist/cli.js` is the published binary.
+- `pnpm install --frozen-lockfile` — install (Node >= 22.22, pnpm 10).
+- `pnpm run build` — `tsc` to `dist/` (runs `clean` first). `node dist/cli/cli.js` is the published binary.
 - `pnpm dev --help` — run the CLI from source via `tsx` without building.
-- `pnpm test` — Vitest suite. Single file: `pnpm exec vitest run test/<name>.test.ts`.
+- `pnpm test` — typecheck, build and Vitest with coverage. Single file without the full gate: `pnpm exec vitest run test/<area>/<name>.test.ts`.
 - `pnpm run typecheck` — `tsc --noEmit`.
 - `pnpm run lint:check` / `pnpm run lint` — ESLint (check / fix).
 - `pnpm run format:check` / `pnpm run format` — Prettier over the whole repo, including `.md`, `docs/` and `.claude/`.
-- CI runs format, lint, typecheck, build and test on Node 20 and 22 (`.github/workflows/checks.yml`). Windows checkouts with `core.autocrlf=true` fail `format:check` on line endings only; verify with `pnpm exec prettier --check --end-of-line auto .`.
+- CI runs format, lint, typecheck, build and test on Node 22 and 24 (`.github/workflows/checks.yml`). Windows checkouts with `core.autocrlf=true` fail `format:check` on line endings only; verify with `pnpm exec prettier --check --end-of-line auto .`.
 
 ## Conventions
 
 - One PR = one change, Conventional Commits titles (`feat:`, `fix:`, `chore:`, `docs:`). See `CONTRIBUTING.md`; its rules are binding for agents — if a change would violate them, stop and surface it.
 - ESM only (`"type": "module"`, `moduleResolution: NodeNext`): relative imports in `src/` end in `.js`; tests import sources with their real `.ts`/`.tsx` extension.
 - TypeScript `strict`; React 18 + Ink 5 for the terminal UI; LangChain `deepagents` for the agent; Vitest for tests.
-- Never log, print or persist secret values. Anything user-visible that may contain a credential goes through `sanitizeDiagnosticText` in `src/diagnostics.ts`.
+- Never log, print or persist secret values. Anything user-visible that may contain a credential goes through `sanitizeDiagnosticText` in `src/platform/diagnostics.ts`.
 - `openwiki/` in this repo is generated output maintained by CI (`.github/workflows/openwiki-update.yml`). Do not hand-edit it or run `openwiki --update` here unless explicitly asked.
 - Do not modify `src/` or `package.json` beyond what a task needs: this is a fork of `langchain-ai/openwiki` and should stay easy to merge upstream.
 
 ## Where things live
 
-- CLI argument parsing and `--help` text → `src/commands.ts` (`parseCommand`, `helpContent`, `isDevelopmentMode`).
-- Terminal UI, run lifecycle, `-p/--print` mode, auto-exit → `src/cli.tsx` (large; use `docs/source-map.md` to find the right function).
-- Provider list, model presets, env-key names, validation → `src/constants.ts` (`PROVIDER_CONFIGS`, `OpenWikiProvider`).
-- Model construction, agent run, stream parsing, OpenRouter debug capture → `src/agent/index.ts` (`runOpenWikiAgent`, `createModel`).
-- System/user prompts for init/update/chat → `src/agent/prompt.ts`.
-- Git evidence, `.last-update.json`, no-op detection, content snapshot → `src/agent/utils.ts`.
-- `~/.openwiki/.env` read/write and credential diagnostics → `src/env.ts` (`MANAGED_ENV_KEYS`).
-- Interactive first-run setup (provider, key, base URL, model, LangSmith) → `src/credentials.tsx`.
-- Secret redaction and error classification → `src/diagnostics.ts`.
-- Tests → `test/*.test.ts`; CI example workflows → `examples/`.
-- Full per-file map with exported symbols → `docs/source-map.md`.
+- CLI argument parsing and `--help` text → `src/cli/commands.ts` (`parseCommand`, `helpContent`, `isDevelopmentMode`).
+- Terminal UI, run lifecycle, `-p/--print` mode, auto-exit → `src/cli/cli.tsx`, `src/cli/runners.ts`, `src/cli/startup.ts` (`resolveStartupCommand`).
+- Provider list, model presets, env-key names, validation → `src/config/constants.ts` (`PROVIDER_CONFIGS`, `OpenWikiProvider`, `resolveConfiguredProvider`).
+- Model construction, agent run, OpenRouter debug capture → `src/agent/index.ts` (`runOpenWikiAgent`, `createModel`).
+- System/user prompts for init/update/chat → `src/agent/prompt.ts`; code and personal prompt variants in `src/agent/prompts/`.
+- Git evidence, `.last-update.json`, no-op detection, run context → `src/agent/utils.ts` (`getUpdateNoopStatus`, `writeLastUpdateMetadata`).
+- `~/.openwiki/.env` read/write → `src/config/env.ts` (`MANAGED_ENV_KEYS`).
+- Interactive first-run setup (provider, key, base URL, model, LangSmith) → `src/setup/credentials.tsx`, steps in `src/setup/credentials/steps.ts`.
+- Secret redaction and diagnostics → `src/platform/diagnostics.ts` (`sanitizeDiagnosticText`).
+- Tests → `test/<area>/*.test.ts` mirroring `src/` (e.g. `test/agent/`, `test/cli/`, `test/config/`); CI example workflows → `examples/`.
+- Per-file map: start at `openwiki/quickstart.md` (generated by CI, see `maintain-wiki`) or grep the symbol.
 
 ## Skills
 
@@ -57,10 +53,10 @@ Project skills live in `.claude/skills/`. Use them when the task matches:
 
 ## Hub work
 
-The Hub (multi-project GitLab portal) is specified but not yet implemented. Spec: `docs/superpowers/specs/2026-07-08-openwiki-hub-design.md`. Plan: `docs/superpowers/plans/2026-07-08-openwiki-hub.md`. Start from the `hub-implementation` skill.
+The Hub (multi-project GitLab portal) is specified but not yet implemented, and the current spec is under revision. Spec (v1, to be replaced): `docs/superpowers/specs/2026-07-08-openwiki-hub-design.md`. Plan (v1): `docs/superpowers/plans/2026-07-08-openwiki-hub.md`. Roadmap and decisions: `docs/superpowers/plans/2026-10-27-openwiki-roadmap.md`. Do not implement the Hub before the v2 spec is approved. Start from the `hub-implementation` skill.
 
-## Fork status and role in the SDLC landscape (2026-10-26)
+## Fork status (2026-10-27)
 
-- This fork is **337 commits behind** `origin/main` (`langchain-ai/openwiki`) and 4 commits ahead (agent onboarding, Hub spec and plan). The README describes upstream behaviour as of July 2026; check upstream before relying on CLI flags or provider lists, and rebase before new feature work.
-- Fork-specific changes stay out of `README.md` to keep merges simple; they live here and under `docs/superpowers/`.
-- In the SDLC project landscape OpenWiki supplies repository documentation as context: for the Prüfstand review pipeline (the `openwiki/` folder as review context, referenced by path and commit) and for ACTOR (context output). Open items: `TODO.md`.
+- The fork is based on `origin/main` (upstream v0.7.2) after the rebase on branch `chore/upstream-v0.7.2`. The pre-rebase state is kept on `backup/pre-upstream-2026-10-27`.
+- The fork adds docs only (Hub spec and plan, roadmap, agent onboarding, LLM onboarding spec). Fork-specific code changes should stay minimal; check upstream before relying on CLI flags or provider lists.
+- SDLC context: OpenWiki supplies repository docs to the Prüfstand review pipeline and to ACTOR. Open items: `TODO.md`.

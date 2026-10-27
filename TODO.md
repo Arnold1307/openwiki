@@ -4,7 +4,7 @@ Quelle: `C:\Develop\SDLC\Projektuebersicht.docx`, Kapitel 8 und 9. Die Nummern e
 
 ## 1. Befund-Rückkanal und Team-Regeln
 
-- [ ] Den openwiki/-Ordner als Prüfkontext für den Prüfstand bereitstellen. Pfad und Commit müssen eindeutig referenzierbar sein.
+- [x] Den openwiki/-Ordner als Prüfkontext für den Prüfstand bereitstellen. `GET /api/projects/:id/context?sha=<commit>` liefert den archivierten Stand dieses Commits und bestätigt den SHA im `X-OpenWiki-SHA`-Header.
 
 ## Aus Kapitel 8.2 (ACTOR-Anbindung)
 

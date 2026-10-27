@@ -45,7 +45,7 @@ runOpenWikiAgent(command, cwd, options)
 | "Do not modify source outside openwiki/"               | Nothing enforces it — the prompt is the guard                                                                      |
 | "Updates may be a no-op"                               | Metadata is only written when the content snapshot changed                                                         |
 
-Constants come from `src/constants.ts` (`OPEN_WIKI_DIR`, `UPDATE_METADATA_PATH`);
+Constants come from `src/config/constants.ts` (`OPEN_WIKI_DIR`, `UPDATE_METADATA_PATH`);
 never hardcode `openwiki/` in prompt text.
 
 ## Validate without an LLM call
@@ -56,8 +56,8 @@ pnpm exec tsx -e "import('./src/agent/prompt.ts').then(m => console.log(m.create
 
 For the user prompt, build a context in a Vitest test:
 `createRunContext("update", repo)` against a temp git repo (pattern in
-`test/update-noop.test.ts`), then assert on `createUserPrompt(...)`. There is
-no prompt test file yet; add `test/prompt.test.ts` when behaviour changes.
+`test/agent/update-noop.test.ts`), then assert on `createUserPrompt(...)`. There is
+`test/agent/prompt.test.ts` exists; extend it when behaviour changes.
 
 `--dry-run` does **not** print the prompt (see `openwiki-dev-loop`).
 
