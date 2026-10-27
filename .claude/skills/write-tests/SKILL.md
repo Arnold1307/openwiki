@@ -13,17 +13,17 @@ style; do not introduce `vi.mock` for filesystem or git.
 
 ## Quick reference
 
-| Concern                         | Pattern                                                                                         | Example file               |
-| ------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------- |
-| File location/name              | `test/<module>.test.ts`, flat, one file per source module or concern                            | `test/commands.test.ts`    |
-| Imports                         | `from "../src/x.ts"` / `"../src/x.tsx"` — real extension, not `.js`                             | `test/credentials.test.ts` |
-| Pure functions with env         | Prefer functions that take `env` as a parameter (`resolveConfiguredProvider({...})`)            | `test/constants.test.ts`   |
-| Functions reading `process.env` | Snapshot the keys you touch, restore in `afterEach`, delete when originally undefined           | `test/credentials.test.ts` |
-| Git-dependent logic             | `mkdtemp` + `execFile("git", …)` helper; commit fixtures; assert on returned status objects     | `test/update-noop.test.ts` |
-| Secret redaction                | Set a fake secret in `process.env`, assert it is replaced by `[REDACTED:<KEY>]`                 | `test/redaction.test.ts`   |
-| CLI parsing                     | Call `parseCommand([...argv])` and assert on the discriminated union (`kind: "run" \| "error"`) | `test/commands.test.ts`    |
-| Dev-only flags                  | Set `OPENWIKI_DEV=1` inside the test, restore after                                             | `test/commands.test.ts`    |
-| Run one file                    | `pnpm exec vitest run test/<name>.test.ts`                                                      |                            |
+| Concern                         | Pattern                                                                                         | Example file                     |
+| ------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------- |
+| File location/name              | `test/<module>.test.ts`, flat, one file per source module or concern                            | `test/cli/commands.test.ts`      |
+| Imports                         | `from "../src/x.ts"` / `"../src/x.tsx"` — real extension, not `.js`                             | `test/setup/credentials.test.ts` |
+| Pure functions with env         | Prefer functions that take `env` as a parameter (`resolveConfiguredProvider({...})`)            | `test/config/constants.test.ts`  |
+| Functions reading `process.env` | Snapshot the keys you touch, restore in `afterEach`, delete when originally undefined           | `test/setup/credentials.test.ts` |
+| Git-dependent logic             | `mkdtemp` + `execFile("git", …)` helper; commit fixtures; assert on returned status objects     | `test/agent/update-noop.test.ts` |
+| Secret redaction                | Set a fake secret in `process.env`, assert it is replaced by `[REDACTED:<KEY>]`                 | `test/agent/redaction.test.ts`   |
+| CLI parsing                     | Call `parseCommand([...argv])` and assert on the discriminated union (`kind: "run" \| "error"`) | `test/cli/commands.test.ts`      |
+| Dev-only flags                  | Set `OPENWIKI_DEV=1` inside the test, restore after                                             | `test/cli/commands.test.ts`      |
+| Run one file                    | `pnpm exec vitest run test/<name>.test.ts`                                                      |                                  |
 
 ## Env isolation template
 
@@ -46,14 +46,14 @@ for the next test.
 
 ## Temp git repo template
 
-Copy `git()` and `createRepoWithOpenWiki()` from `test/update-noop.test.ts`.
+Copy `git()` and `createRepoWithOpenWiki()` from `test/agent/update-noop.test.ts`.
 Always set `user.email`/`user.name` in the temp repo — CI runners have no
 global git identity. Windows: the repo path comes from `tmpdir()`; do not
 hardcode `/tmp`.
 
 ## What not to test
 
-- Ink components (`src/cli.tsx`, `src/credentials.tsx` UI) — no renderer test
+- Ink components (`src/cli/cli.tsx`, `src/setup/credentials.tsx` UI) — no renderer test
   harness is set up; extract logic into plain functions and test those
   (`needsCredentialSetup` is the existing example).
 - The LLM/agent run itself (`runOpenWikiAgent`) — network and cost. Test the

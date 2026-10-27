@@ -54,7 +54,7 @@ semantically stale, so:
 ## Running an update locally (only when asked)
 
 ```sh
-pnpm run build && node dist/cli.js --update -p
+pnpm run build && node dist/cli/cli.js --update -p
 ```
 
 Needs a provider key (`~/.openwiki/.env` or env). It writes `openwiki/` and

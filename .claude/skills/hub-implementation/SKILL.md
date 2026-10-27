@@ -7,6 +7,8 @@ description: Use when implementing, continuing, or reviewing the OpenWiki Hub â€
 
 ## Overview
 
+> **Status:** the v1 spec and plan are being revised (roadmap: `docs/superpowers/plans/2026-10-27-openwiki-roadmap.md`). Do not start implementation until the v2 spec is approved.
+
 The Hub is a planned monorepo addition: `hub/server` (Fastify, SQLite, cron,
 GitLab API, SSE) and `hub/web` (React + Vite) that clone GitLab projects, run
 `runOpenWikiAgent` as a library, and serve the resulting `openwiki/` docs.
@@ -43,13 +45,13 @@ are English; UI copy is German.
 
 ## Reuse from the CLI package
 
-| Need                        | Use                                                                                                                                             |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| Run init/update on a clone  | `runOpenWikiAgent(command, cloneDir, { onEvent })` from `src/agent/index.ts`                                                                    |
-| Decide init vs update       | Existence of `<clone>/openwiki/`                                                                                                                |
-| Event shape for logs/SSE    | `OpenWikiRunEvent` in `src/agent/types.ts`                                                                                                      |
-| Provider validation at boot | `resolveConfiguredProvider` + `getProviderApiKeyEnvKey` (`src/constants.ts`), `getErrorMessage`/`sanitizeDiagnosticText` (`src/diagnostics.ts`) |
-| Skip when nothing changed   | Compare HEAD to last successful scan's SHA (Hub-side), not `.last-update.json`                                                                  |
+| Need                        | Use                                                                                                                                                             |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Run init/update on a clone  | `runOpenWikiAgent(command, cloneDir, { onEvent })` from `src/agent/index.ts`                                                                                    |
+| Decide init vs update       | Existence of `<clone>/openwiki/`                                                                                                                                |
+| Event shape for logs/SSE    | `OpenWikiRunEvent` in `src/agent/types.ts`                                                                                                                      |
+| Provider validation at boot | `resolveConfiguredProvider` + `getProviderApiKeyEnvKey` (`src/config/constants.ts`), `getErrorMessage`/`sanitizeDiagnosticText` (`src/platform/diagnostics.ts`) |
+| Skip when nothing changed   | Compare HEAD to last successful scan's SHA (Hub-side), not `.last-update.json`                                                                                  |
 
 ## Common mistakes
 
