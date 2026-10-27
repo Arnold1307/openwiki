@@ -5,6 +5,7 @@ import { sanitizeDiagnosticText } from "openwiki/diagnostics";
 import type { HubConfig } from "./config.js";
 import type { HubDeps, HubGitLab } from "./deps.js";
 import { GitLabClient } from "./gitlab/client.js";
+import { registerMcpRoute } from "./mcp/http.js";
 import { registerApiRoutes } from "./routes/api.js";
 import { openDb } from "./store/db.js";
 import { markInterruptedSnapshots } from "./store/snapshots.js";
@@ -64,5 +65,6 @@ export async function buildServer(
   });
   app.get("/healthz", async () => ({ ok: true }));
   registerApiRoutes(app, deps);
+  registerMcpRoute(app, deps);
   return app;
 }

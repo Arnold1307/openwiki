@@ -25,6 +25,7 @@ import {
 } from "../store/snapshots.js";
 import { snapshotDir, syncProject, type SyncDeps } from "../sync/sync-project.js";
 import { wikiStaleness } from "../sync/staleness.js";
+import { servedProjects, servedWiki } from "../wikis.js";
 
 const AddProjectBody = z.object({ url: z.string().min(1) });
 const PatchProjectBody = z.object({ enabled: z.boolean() });
@@ -55,13 +56,6 @@ export function registerApiRoutes(app: FastifyInstance, deps: HubDeps): void {
     }
     if (error instanceof GitLabError) return { status: 502, error: error.message };
     throw error;
-  };
-
-  const servedWiki = (project: Project) => {
-    const latest = latestSuccessfulSnapshot(db, project.id);
-    return latest
-      ? { latest, root: snapshotDir(config.dataDir, project.id, latest.sha) }
-      : undefined;
   };
 
   app.get("/api/projects", async () =>
@@ -170,7 +164,7 @@ export function registerApiRoutes(app: FastifyInstance, deps: HubDeps): void {
 
   app.get<{ Params: { id: string } }>("/api/projects/:id/docs", async (request, reply) => {
     const project = getProject(db, Number(request.params.id));
-    const served = project && servedWiki(project);
+    const served = project && servedWiki(deps, project);
     if (!served) return reply.code(404).send({ error: "No wiki for this project yet." });
     return {
       sha: served.latest.sha,
@@ -182,7 +176,7 @@ export function registerApiRoutes(app: FastifyInstance, deps: HubDeps): void {
     "/api/projects/:id/docs/file",
     async (request, reply) => {
       const project = getProject(db, Number(request.params.id));
-      const served = project && servedWiki(project);
+      const served = project && servedWiki(deps, project);
       if (!served) return reply.code(404).send({ error: "No wiki for this project yet." });
       let file: string;
       try {
@@ -233,7 +227,7 @@ export function registerApiRoutes(app: FastifyInstance, deps: HubDeps): void {
     const snapshots: SearchableSnapshot[] = [];
     for (const project of listProjects(db)) {
       if (!project.enabled || project.archived) continue;
-      const served = servedWiki(project);
+      const served = servedWiki(deps, project);
       if (served) {
         snapshots.push({ projectId: project.id, projectPath: project.path, root: served.root });
       }
