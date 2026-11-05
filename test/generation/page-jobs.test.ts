@@ -137,6 +137,18 @@ describe("createRepositoryPlan", () => {
     }
   });
 
+  test("rejects a seed path that escapes the repository", () => {
+    expect(() =>
+      createRepositoryPlan(
+        "update",
+        {
+          pages: [{ ...proposedPage("page.md"), seedPaths: ["../secret"] }],
+        },
+        [],
+      ),
+    ).toThrow("Invalid seed path: ../secret");
+  });
+
   test("normalizes page inputs and orders quickstart last", () => {
     const plan = createRepositoryPlan(
       "init",
