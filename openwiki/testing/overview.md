@@ -733,7 +733,8 @@ concern, mirroring `src/generation/`:
   deletion is forbidden, duplicate planned pages and generate/delete overlap
   are rejected, structural and reserved working pages (`index.md`,
   `nested/_draft.md`) are rejected, and page inputs are normalized with
-  quickstart ordered last. The `reconcilePageClaims` suite pins sparse
+  quickstart ordered last. A seed path whose parts include `..`, such as
+  `../secret`, is rejected as `Invalid seed path`. The `reconcilePageClaims` suite pins sparse
   reconciliation: omitted issue-free Claims are retained without model
   round-tripping, a stale or unresolved Claim requires an explicit
   confirm/update/retract decision, duplicate sparse proposals and conflicting
