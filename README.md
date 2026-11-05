@@ -752,3 +752,9 @@ Contributions are welcome. Please read [CONTRIBUTING.md](./CONTRIBUTING.md) befo
 ## License
 
 [MIT](./LICENSE)
+
+## Projektdokumente
+
+- `CHANGELOG.md` – Änderungen je Version
+- `USE-CASE.md` – Anwendungsfälle
+- `WORKFLOW.md` – Ablauf, Gates und offene Punkte
