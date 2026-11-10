@@ -1,7 +1,4 @@
 import { loadConfig } from "./config.js";
-import { buildServer } from "./index.js";
-import { startScheduler } from "./scheduler.js";
-import { runScanAll } from "./sync/scan-all.js";
 import { shutdownTelemetry, startTelemetry } from "./telemetry.js";
 
 /**
@@ -9,8 +6,12 @@ import { shutdownTelemetry, startTelemetry } from "./telemetry.js";
  * scan, and shut down cleanly on SIGINT or SIGTERM.
  */
 async function main(): Promise<void> {
-  // Telemetry before buildServer so HTTP instrumentation wraps the listener.
+  // Telemetry before Fastify/http load so HttpInstrumentation can patch listeners.
   startTelemetry(process.env);
+
+  const { buildServer } = await import("./index.js");
+  const { startScheduler } = await import("./scheduler.js");
+  const { runScanAll } = await import("./sync/scan-all.js");
 
   let config;
   try {

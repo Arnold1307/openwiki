@@ -7,6 +7,7 @@ import { PathError, resolveDocPath } from "../docs/resolve-path.js";
 import { listDocPages } from "../docs/tree.js";
 import type { HubDeps } from "../deps.js";
 import { GitLabAuthError, GitLabError } from "../gitlab/client.js";
+import { upsertLocalPageWithSpecRef } from "../local/spec-ref-page.js";
 import {
   RefResolutionError,
   resolveSpecLabRef,
@@ -55,6 +56,19 @@ const GlobalRefQuery = z.object({
   ref: z.string().trim().min(1),
   project: z.string().trim().min(1).optional(),
   since: z.string().trim().min(1).optional(),
+});
+const LocalPageBody = z.object({
+  projectPath: z.string().trim().min(1).max(200),
+  page: z.string().trim().min(1).max(200),
+  sha: z.string().trim().min(7).max(64),
+  title: z.string().trim().min(1).max(200),
+  body: z.string().max(200_000).default(""),
+  spec_ref: z.object({
+    ref: z.string().trim().min(1).max(200),
+    version: z.union([z.string().trim().min(1), z.number()]).transform(String),
+    checksum: z.string().trim().min(1).max(200),
+  }),
+  changedSince: z.string().trim().min(7).max(64).optional(),
 });
 
 /**
@@ -105,6 +119,47 @@ export function registerApiRoutes(app: FastifyInstance, deps: HubDeps): void {
       latest: latestSuccessfulSnapshot(db, project.id) ?? null,
     })),
   );
+
+  /**
+   * Local/demo page upsert without GitLab: writes openwiki/<page> with
+   * `spec_ref` front matter and records a successful snapshot for `sha`.
+   */
+  app.post<{ Body: unknown }>("/api/local/pages", async (request, reply) => {
+    const body = LocalPageBody.safeParse(request.body);
+    if (!body.success) {
+      return reply.code(400).send({
+        error:
+          "Body needs projectPath, page, sha, title and spec_ref {ref,version,checksum}.",
+      });
+    }
+    try {
+      const result = await upsertLocalPageWithSpecRef({
+        dataDir: config.dataDir,
+        db,
+        projectPath: body.data.projectPath,
+        page: body.data.page,
+        sha: body.data.sha,
+        title: body.data.title,
+        body: body.data.body,
+        specRef: body.data.spec_ref,
+        changedSince: body.data.changedSince,
+      });
+      return reply.code(201).send({
+        projectId: result.project.id,
+        projectPath: result.project.path,
+        sha: result.sha,
+        path: result.path,
+        spec_ref: result.spec_ref,
+        changedSince: result.changedSince,
+        markdown: result.markdown,
+      });
+    } catch (error) {
+      if (error instanceof PathError) {
+        return reply.code(400).send({ error: error.message });
+      }
+      throw error;
+    }
+  });
 
   app.get<{ Params: { id: string } }>(
     "/api/projects/:id",
