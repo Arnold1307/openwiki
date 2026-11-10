@@ -13,6 +13,12 @@ import { registerApiRoutes } from "./routes/api.js";
 import { openDb } from "./store/db.js";
 import { markInterruptedSnapshots } from "./store/snapshots.js";
 import { SyncQueue } from "./sync/queue.js";
+import {
+  enrichLogFields,
+  formatPrometheusMetrics,
+  logRequestDiagnostic,
+  recordHttpRequest,
+} from "./telemetry.js";
 
 export interface BuildOptions {
   /** Replaces the real GitLab client, for tests. */
@@ -22,7 +28,7 @@ export interface BuildOptions {
 }
 
 /** Path prefixes that belong to the API and never fall back to the web app. */
-const API_PREFIX = /^\/(api|hooks|mcp|healthz)(\/|$|\?)/;
+const API_PREFIX = /^\/(api|hooks|mcp|healthz|metrics)(\/|$|\?)/;
 
 /** hub/web/dist relative to this file, valid from src/ and from dist/. */
 const DEFAULT_WEB_ROOT = fileURLToPath(
@@ -81,7 +87,25 @@ export async function buildServer(
     await deps.queue.drain();
     db.close();
   });
+  app.addHook("onResponse", async (request, reply) => {
+    recordHttpRequest();
+    const ids = enrichLogFields(
+      request.headers as Record<string, string | string[] | undefined>,
+    );
+    const pathOnly = request.url.split("?")[0] ?? request.url;
+    logRequestDiagnostic({
+      method: request.method,
+      url: pathOnly,
+      statusCode: reply.statusCode,
+      ...ids,
+    });
+  });
   app.get("/healthz", async () => ({ ok: true }));
+  app.get("/metrics", async (_request, reply) => {
+    return reply
+      .type("text/plain; version=0.0.4; charset=utf-8")
+      .send(formatPrometheusMetrics());
+  });
   registerApiRoutes(app, deps);
   registerMcpRoute(app, deps);
   registerWebhookRoute(app, deps);

@@ -2,12 +2,16 @@ import { loadConfig } from "./config.js";
 import { buildServer } from "./index.js";
 import { startScheduler } from "./scheduler.js";
 import { runScanAll } from "./sync/scan-all.js";
+import { shutdownTelemetry, startTelemetry } from "./telemetry.js";
 
 /**
  * Process entry point: read configuration, start the server and the nightly
  * scan, and shut down cleanly on SIGINT or SIGTERM.
  */
 async function main(): Promise<void> {
+  // Telemetry before buildServer so HTTP instrumentation wraps the listener.
+  startTelemetry(process.env);
+
   let config;
   try {
     config = loadConfig(process.env);
@@ -38,6 +42,7 @@ async function main(): Promise<void> {
   const shutdown = async () => {
     schedule.stop();
     await app.close();
+    await shutdownTelemetry();
     process.exit(0);
   };
   process.once("SIGINT", () => void shutdown());
