@@ -1,5 +1,11 @@
 # openwiki
 
+## Unreleased
+
+### Added
+
+- Hub: `wiki.updated` (sdlc-event/v1) nach jedem Schreiben einer lokalen Wiki-Seite. Versand an company-mcp über `OPENWIKI_EVENTS_URL`, `OPENWIKI_EVENTS_TOKEN` und `OPENWIKI_TENANT_ID`; ohne vollständige Konfiguration oder bei Versandfehler wird die Datei in `OPENWIKI_EVENTS_OUT` geschrieben. Das Schreiben der Seite scheitert nicht am Versand. Details: `hub/README.md`.
+
 ## 0.7.2
 
 ### Patch Changes

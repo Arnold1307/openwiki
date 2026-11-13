@@ -14,19 +14,43 @@ voraus.
 
 ## Konfiguration
 
-| Variable                     | Pflicht | Standard           | Zweck                                                               |
-| ---------------------------- | ------- | ------------------ | ------------------------------------------------------------------- |
-| `GITLAB_BASE_URL`            | ja      | –                  | Basis-URL der GitLab-Instanz                                        |
-| `GITLAB_TOKEN`               | ja      | –                  | Token mit `read_api` (Lesen genügt)                                 |
-| `OPENWIKI_HUB_WEBHOOK_TOKEN` | ja      | –                  | Geheimnis für `POST /hooks/gitlab` (GitLab-Header `X-Gitlab-Token`) |
-| `OPENWIKI_HUB_GROUPS`        | nein    | leer               | Gruppen für die Discovery, kommagetrennt                            |
-| `OPENWIKI_HUB_SCHEDULE`      | nein    | `0 2 * * *`        | Cron-Ausdruck für den nächtlichen Abgleich                          |
-| `OPENWIKI_HUB_DATA_DIR`      | nein    | `./data`           | Datenbank und Snapshots                                             |
-| `OPENWIKI_HUB_CONCURRENCY`   | nein    | `1`                | parallele Syncs                                                     |
-| `OPENWIKI_HUB_RETENTION`     | nein    | `20`               | Snapshots je Projekt, die behalten werden                           |
-| `HOST` / `PORT`              | nein    | `0.0.0.0` / `8080` | Listen-Adresse                                                      |
+| Variable                     | Pflicht | Standard           | Zweck                                                                           |
+| ---------------------------- | ------- | ------------------ | ------------------------------------------------------------------------------- |
+| `GITLAB_BASE_URL`            | ja      | –                  | Basis-URL der GitLab-Instanz                                                    |
+| `GITLAB_TOKEN`               | ja      | –                  | Token mit `read_api` (Lesen genügt)                                             |
+| `OPENWIKI_HUB_WEBHOOK_TOKEN` | ja      | –                  | Geheimnis für `POST /hooks/gitlab` (GitLab-Header `X-Gitlab-Token`)             |
+| `OPENWIKI_HUB_GROUPS`        | nein    | leer               | Gruppen für die Discovery, kommagetrennt                                        |
+| `OPENWIKI_HUB_SCHEDULE`      | nein    | `0 2 * * *`        | Cron-Ausdruck für den nächtlichen Abgleich                                      |
+| `OPENWIKI_HUB_DATA_DIR`      | nein    | `./data`           | Datenbank und Snapshots                                                         |
+| `OPENWIKI_HUB_CONCURRENCY`   | nein    | `1`                | parallele Syncs                                                                 |
+| `OPENWIKI_HUB_RETENTION`     | nein    | `20`               | Snapshots je Projekt, die behalten werden                                       |
+| `HOST` / `PORT`              | nein    | `0.0.0.0` / `8080` | Listen-Adresse                                                                  |
+| `OPENWIKI_EVENTS_URL`        | nein    | –                  | Ziel für `wiki.updated`: vollständige URL von company-mcp `POST /api/v1/events` |
+| `OPENWIKI_EVENTS_TOKEN`      | nein    | –                  | Wert für den Header `X-Company-Mcp-Token`                                       |
+| `OPENWIKI_TENANT_ID`         | nein    | –                  | Wert für den Header `X-SDLC-Tenant-Id`                                          |
+| `OPENWIKI_EVENTS_OUT`        | nein    | `./out/events`     | Verzeichnis für Ereignisse, die nicht zugestellt werden konnten                 |
 
 Fehlermeldungen nennen nur den Variablennamen, nie den Wert.
+
+### Ereignis `wiki.updated`
+
+Nach jedem Schreiben einer lokalen Wiki-Seite (`POST /api/local/pages`) sendet
+der Hub ein Ereignis `wiki.updated` im Umschlag sdlc-event/v1. Der Payload
+enthält `page` (Pfad in `openwiki/`) und `revision` (Commit-SHA). Trägt die
+Seite eine Spec-Referenz, kommt `spec_ref` hinzu.
+
+- **Versand:** Sind `OPENWIKI_EVENTS_URL`, `OPENWIKI_EVENTS_TOKEN` und
+  `OPENWIKI_TENANT_ID` alle gesetzt, sendet der Hub einen POST an die URL.
+  Antwortet der Empfänger mit 2xx, wird keine Datei geschrieben.
+- **Datei als Fallback:** Fehlt einer der drei Werte, ist die URL ungültig oder
+  schlägt der Versand fehl (HTTP-Fehler, Verbindungsfehler, Timeout nach 5 s),
+  schreibt der Hub das Ereignis als `<event_id>.json` nach
+  `OPENWIKI_EVENTS_OUT`. Ohne Konfiguration wird kein Versand versucht.
+- **Seite zuerst:** Das Schreiben der Seite scheitert nie am Versand. Die
+  Antwort an den Client bleibt erfolgreich, auch wenn der Empfänger nicht
+  erreichbar ist.
+- **Geheimnisse:** Token und Tenant landen weder in der Datei noch im Log.
+  Fehlergründe sind nur Fehlernamen oder HTTP-Statuscodes.
 
 ## Start
 

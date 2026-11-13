@@ -13,7 +13,8 @@ import {
 import { testConfig } from "./helpers.ts";
 
 /* Patterns copied from sdlc-contracts/schemas/sdlc-event-v1.schema.json. */
-const EVENT_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const EVENT_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const EVENT_TYPE_RE = /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/;
 const OCCURRED_AT_RE =
   /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$/;
@@ -63,11 +64,12 @@ function fakeFetch(respond: () => Response | Promise<Response>) {
 function readOutFiles(dir: string): Record<string, unknown>[] {
   return readdirSync(dir)
     .filter((name) => name.endsWith(".json"))
-    .map((name) =>
-      JSON.parse(readFileSync(path.join(dir, name), "utf8")) as Record<
-        string,
-        unknown
-      >,
+    .map(
+      (name) =>
+        JSON.parse(readFileSync(path.join(dir, name), "utf8")) as Record<
+          string,
+          unknown
+        >,
     );
 }
 
@@ -283,6 +285,25 @@ describe("emitWikiUpdated", () => {
     expect(result.status).toBe("file");
   });
 
+  it("stores a URL without token as a file with reason not_configured, never sending or writing the URL", async () => {
+    const outDir = tempDir();
+    const fetchImpl = fakeFetch(() => new Response(null, { status: 201 }));
+
+    const result = await emitWikiUpdated(
+      eventsConfig(outDir, { url: ENDPOINT, tenantId: TENANT }),
+      { page: "passwd-reset.md", revision: SHA },
+      { fetchImpl: fetchImpl as unknown as typeof fetch },
+    );
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ status: "file", reason: "not_configured" });
+    const names = readdirSync(outDir);
+    expect(names).toHaveLength(1);
+    const raw = readFileSync(path.join(outDir, names[0]!), "utf8");
+    expectValidEnvelope(JSON.parse(raw) as Record<string, unknown>);
+    expect(raw).not.toContain(ENDPOINT);
+  });
+
   it("never throws, even when the event file cannot be written", async () => {
     const blocker = path.join(tempDir(), "not-a-directory");
     writeFileSync(blocker, "occupied");
@@ -325,7 +346,11 @@ describe("POST /api/local/pages emits wiki.updated", () => {
     sha: SHA,
     title: "Passwort zurücksetzen",
     body: "# Ziel\n\nReset per E-Mail.\n",
-    spec_ref: { ref: "SPEC-GP-PASSWD", version: "1", checksum: WIKI_SPEC.checksum },
+    spec_ref: {
+      ref: "SPEC-GP-PASSWD",
+      version: "1",
+      checksum: WIKI_SPEC.checksum,
+    },
   };
 
   it("sends wiki.updated after the page is written", async () => {
@@ -350,7 +375,9 @@ describe("POST /api/local/pages emits wiki.updated", () => {
       expect(response.statusCode).toBe(201);
       expect(fetchImpl).toHaveBeenCalledTimes(1);
       const sent = JSON.parse(
-        String((fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1].body),
+        String(
+          (fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1].body,
+        ),
       ) as Record<string, unknown>;
       expectValidEnvelope(sent);
       expect(sent.trace_id).toBe(TRACE_ID);
