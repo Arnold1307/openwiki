@@ -1,3 +1,5 @@
+import { loadEventsConfig, type EventsConfig } from "./events/wikiEvents.js";
+
 /** Runtime settings for the hub server, read once at startup. */
 export interface HubConfig {
   gitlabBaseUrl: string;
@@ -8,6 +10,8 @@ export interface HubConfig {
   concurrency: number;
   webhookToken: string;
   retention: number;
+  /** `wiki.updated` delivery settings; see events/wikiEvents.ts. */
+  events: EventsConfig;
 }
 
 /**
@@ -49,5 +53,6 @@ export function loadConfig(env: NodeJS.ProcessEnv): HubConfig {
     concurrency: positiveInteger("OPENWIKI_HUB_CONCURRENCY", 1),
     webhookToken: required("OPENWIKI_HUB_WEBHOOK_TOKEN"),
     retention: positiveInteger("OPENWIKI_HUB_RETENTION", 20),
+    events: loadEventsConfig(env),
   };
 }

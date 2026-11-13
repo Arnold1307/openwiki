@@ -7,6 +7,7 @@ import { PathError, resolveDocPath } from "../docs/resolve-path.js";
 import { listDocPages } from "../docs/tree.js";
 import type { HubDeps } from "../deps.js";
 import { GitLabAuthError, GitLabError } from "../gitlab/client.js";
+import { emitWikiUpdated } from "../events/wikiEvents.js";
 import { upsertLocalPageWithSpecRef } from "../local/spec-ref-page.js";
 import {
   RefResolutionError,
@@ -37,6 +38,7 @@ import {
 } from "../sync/sync-project.js";
 import { runScanAll } from "../sync/scan-all.js";
 import { wikiStaleness } from "../sync/staleness.js";
+import { enrichLogFields } from "../telemetry.js";
 import { servedProjects, servedWiki } from "../wikis.js";
 
 /** Value the web app sends in X-Requested-With on every API request. */
@@ -144,6 +146,20 @@ export function registerApiRoutes(app: FastifyInstance, deps: HubDeps): void {
         specRef: body.data.spec_ref,
         changedSince: body.data.changedSince,
       });
+      // Emitted after the write; delivery problems never fail the write.
+      const delivery = await emitWikiUpdated(
+        config.events,
+        {
+          page: result.path,
+          revision: result.sha,
+          specRef: result.spec_ref,
+        },
+        { traceId: enrichLogFields(request.headers).trace_id },
+      );
+      request.log.info(
+        { event_type: "wiki.updated", delivery: delivery.status },
+        "wiki event handled",
+      );
       return reply.code(201).send({
         projectId: result.project.id,
         projectPath: result.project.path,
