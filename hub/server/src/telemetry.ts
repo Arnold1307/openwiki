@@ -40,7 +40,9 @@ export type HeaderMap = Record<
 export type DiagnosticSink = (line: string) => void;
 
 let sdk: NodeSDK | undefined;
-let httpRequestsTotal = 0;
+const HTTP_BUCKETS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.3, 0.5, 1, 2.5, 5, 10] as const;
+type HttpObservation = { count: number; sum: number; buckets: number[] };
+const httpObservations = new Map<string, HttpObservation>();
 let diagnosticSink: DiagnosticSink = (line) => {
   // Vitest sets VITEST; keep the suite quiet unless a test installs a sink.
   if (process.env.VITEST) return;
@@ -155,18 +157,32 @@ export function logRequestDiagnostic(fields: {
   diagnosticSink(JSON.stringify(payload));
 }
 
-/** Count one handled HTTP request for `/metrics`. */
-export function recordHttpRequest(): void {
-  httpRequestsTotal += 1;
+/** Record a request with bounded status-code labels and duration in seconds. */
+export function recordHttpRequest(statusCode: number, durationSeconds: number): void {
+  const status = Number.isInteger(statusCode) && statusCode >= 100 && statusCode <= 599
+    ? String(statusCode)
+    : "other";
+  const observation = httpObservations.get(status) ?? {
+    count: 0,
+    sum: 0,
+    buckets: HTTP_BUCKETS.map(() => 0),
+  };
+  const duration = Number.isFinite(durationSeconds) ? Math.max(0, durationSeconds) : 0;
+  observation.count += 1;
+  observation.sum += duration;
+  HTTP_BUCKETS.forEach((bound, index) => {
+    if (duration <= bound) observation.buckets[index] += 1;
+  });
+  httpObservations.set(status, observation);
 }
 
 /** Reset the in-process request counter (tests only). */
 export function resetHttpRequestCounter(): void {
-  httpRequestsTotal = 0;
+  httpObservations.clear();
 }
 
 /**
- * Prometheus text exposition: process gauges plus a request counter.
+ * Prometheus text exposition: process gauges plus an HTTP duration histogram.
  * Content-Type: text/plain; version=0.0.4
  */
 export function formatPrometheusMetrics(
@@ -183,11 +199,26 @@ export function formatPrometheusMetrics(
     "# HELP process_heap_bytes Process heap used in bytes.",
     "# TYPE process_heap_bytes gauge",
     `process_heap_bytes ${mem.heapUsed}`,
-    "# HELP http_requests_total Total HTTP requests handled by the hub.",
-    "# TYPE http_requests_total counter",
-    `http_requests_total ${httpRequestsTotal}`,
-    "",
+    "# HELP http_request_duration_seconds HTTP request duration in seconds.",
+    "# TYPE http_request_duration_seconds histogram",
   ];
+  for (const [status, observation] of [...httpObservations.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    HTTP_BUCKETS.forEach((bound, index) => {
+      lines.push(`http_request_duration_seconds_bucket{status_code="${status}",le="${bound}"} ${observation.buckets[index]}`);
+    });
+    lines.push(`http_request_duration_seconds_bucket{status_code="${status}",le="+Inf"} ${observation.count}`);
+    lines.push(`http_request_duration_seconds_sum{status_code="${status}"} ${observation.sum}`);
+    lines.push(`http_request_duration_seconds_count{status_code="${status}"} ${observation.count}`);
+  }
+  if (httpObservations.size === 0) {
+    for (const bound of HTTP_BUCKETS) {
+      lines.push(`http_request_duration_seconds_bucket{status_code="other",le="${bound}"} 0`);
+    }
+    lines.push('http_request_duration_seconds_bucket{status_code="other",le="+Inf"} 0');
+    lines.push('http_request_duration_seconds_sum{status_code="other"} 0');
+    lines.push('http_request_duration_seconds_count{status_code="other"} 0');
+  }
+  lines.push("");
   return lines.join("\n");
 }
 

@@ -5,6 +5,7 @@ import {
   enrichLogFields,
   formatPrometheusMetrics,
   parseTraceparent,
+  recordHttpRequest,
   resetHttpRequestCounter,
   resolveOtlpTracesUrl,
   runWithTraceparent,
@@ -114,16 +115,36 @@ describe("GET /metrics", () => {
       expect(response.statusCode).toBe(200);
       expect(response.headers["content-type"]).toMatch(/text\/plain/);
       expect(response.body).toContain("process_uptime_seconds");
-      expect(response.body).toContain("http_requests_total");
-      expect(response.body).toMatch(/http_requests_total [1-9]/);
+      expect(response.body).toContain('http_request_duration_seconds_count{status_code="200"} 1');
     } finally {
       await app.close();
     }
   });
 
   it("formatPrometheusMetrics includes the required series", () => {
+    recordHttpRequest(500, 0.12);
     const body = formatPrometheusMetrics();
     expect(body).toContain("# TYPE process_uptime_seconds gauge");
-    expect(body).toContain("# TYPE http_requests_total counter");
+    expect(body).toContain("# TYPE http_request_duration_seconds histogram");
+    expect(body).toContain('http_request_duration_seconds_bucket{status_code="500",le="0.1"}');
+    expect(body).toContain('http_request_duration_seconds_count{status_code="500"} 1');
+    expect(body).not.toMatch(/\{[^}]*path=/);
+  });
+
+  it("records request count, status and duration in bounded labels", async () => {
+    const app = await buildServer(testConfig());
+    try {
+      await app.inject({ method: "GET", url: "/healthz" });
+      const response = await app.inject({ method: "GET", url: "/missing-route" });
+      expect(response.statusCode).toBe(404);
+      const metrics = (await app.inject({ method: "GET", url: "/metrics" })).body;
+      expect(metrics).toContain('http_request_duration_seconds_count{status_code="200"} 1');
+      expect(metrics).toContain('http_request_duration_seconds_count{status_code="404"} 1');
+      expect(metrics).toContain('http_request_duration_seconds_bucket{status_code="200",le="+Inf"} 1');
+      expect(metrics).not.toContain("/healthz");
+      expect(metrics).not.toContain("/missing-route");
+    } finally {
+      await app.close();
+    }
   });
 });

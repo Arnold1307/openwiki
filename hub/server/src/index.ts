@@ -83,12 +83,20 @@ export async function buildServer(
   };
 
   const app = Fastify({ logger: false });
+  const requestStartedAt = new WeakMap<object, bigint>();
+  app.addHook("onRequest", async (request) => {
+    requestStartedAt.set(request, process.hrtime.bigint());
+  });
   app.addHook("onClose", async () => {
     await deps.queue.drain();
     db.close();
   });
   app.addHook("onResponse", async (request, reply) => {
-    recordHttpRequest();
+    const startedAt = requestStartedAt.get(request);
+    const durationSeconds = startedAt === undefined
+      ? 0
+      : Number(process.hrtime.bigint() - startedAt) / 1_000_000_000;
+    recordHttpRequest(reply.statusCode, durationSeconds);
     const ids = enrichLogFields(
       request.headers as Record<string, string | string[] | undefined>,
     );
