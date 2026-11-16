@@ -1,5 +1,9 @@
 <!-- markdownlint-disable MD033 MD041 -->
 
+> **⚠️ ARCHIVIERT / KONSOLIDIERT (ADR-003, 16.11.2026):**
+> Dieses Repository (`openwiki`) wurde vollständig in **[`company-brain`](../company-brain/README.md)** (`https://github.com/Arnold1307/company-brain`) konsolidiert (Module `wiki`, `docgen` und `/mcp`).
+> Neue Entwicklungen, Code-Wiki-Abfragen (`/api/ref`, `/api/projects/{id}/context`) und Code-zu-Doku-Läufe finden ausschließlich in `company-brain` statt. Dieses Repository ist schreibgeschützt archiviert.
+
 <div align="center">
 
 <img alt="OpenWiki" src="./static/openwiki-lockup.png" width="620">
