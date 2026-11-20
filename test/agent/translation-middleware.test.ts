@@ -277,11 +277,6 @@ describe("createWikiTranslationMiddleware beforeAgent", () => {
     // Tags are a cross-cutting aggregation key, so they stay canonical: the
     // prompt tells the model to leave the tags values in English.
     expect(calls[0].system).toContain('Leave the "tags" values in English');
-    // Every translation call is tagged so its tokens are excluded from the
-    // agent's messages stream and never scroll past in the TUI.
-    for (const call of calls) {
-      expect(call.tags).toContain("langsmith:nostream");
-    }
   });
 
   test("announces the pass once when at least one page is translated", async () => {

@@ -1,4 +1,4 @@
-import type { BackendProtocolV2 } from "deepagents";
+import type { OpenWikiBackend } from "./backend-types.js";
 import { validateWikiMermaid } from "../mermaid/wiki.js";
 import {
   deserializeGeneratedProvenance,
@@ -92,7 +92,7 @@ export interface WikiLifecycleOptions {
   /**
    * Filesystem abstraction rooted to the active wiki target.
    */
-  backend: BackendProtocolV2;
+  backend: OpenWikiBackend;
 
   /**
    * Repository or local-wiki output layout.

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import type { BackendProtocolV2 } from "deepagents";
+import type { OpenWikiBackend } from "../agent/backend-types.js";
 import type { OpenWikiOutputMode } from "../agent/types.js";
 import {
   formatRepositoryEvidenceResource,
@@ -36,7 +36,7 @@ export type ClaimEvidenceResources = ReadonlyMap<string, readonly string[]>;
  * @param resourcesByPage - Complete current evidence resources per Claims page.
  */
 export async function synchronizeClaimSources(
-  backend: BackendProtocolV2,
+  backend: OpenWikiBackend,
   outputMode: OpenWikiOutputMode,
   resourcesByPage: ClaimEvidenceResources,
 ): Promise<void> {
@@ -144,12 +144,12 @@ function openWikiSourceId(resource: string): string {
  * Reads one required concept as UTF-8-compatible Markdown.
  */
 async function readRequiredContent(
-  backend: BackendProtocolV2,
+  backend: OpenWikiBackend,
   page: string,
 ): Promise<string> {
   const read = await backend.readRaw(page);
   const content = read.data?.content;
-  if (read.error || content === undefined || content instanceof Uint8Array) {
+  if (read.error || content === undefined || content === null || content instanceof Uint8Array) {
     throw new Error(
       `Unable to read ${page} while synchronizing OKF sources: ${read.error ?? "no text data"}`,
     );

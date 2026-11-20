@@ -96,11 +96,6 @@ export const DEFAULT_PAGE_CONCURRENCY = 1;
  * provider key is rate-limit bound and the progress view stops being readable.
  */
 export const MAX_PAGE_CONCURRENCY = 8;
-/**
- * Overrides the LangSmith thread one repository run's traces are grouped under,
- * so CI can name it after the change that caused the run.
- */
-const OPENWIKI_TRACE_THREAD_ID_ENV_KEY = "OPENWIKI_TRACE_THREAD_ID";
 export const DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS = 16_384;
 const TRUE_ENV_VALUE = "true";
 export const OPENWIKI_GOOGLE_ACCESS_TOKEN_ENV_KEY =
@@ -641,7 +636,7 @@ export function getMissingProviderEnvKey(
   const config = getProviderConfig(provider);
 
   if (providerUsesAwsSdkCredentials(provider)) {
-    // @langchain/aws gives the Bedrock bearer token precedence over both
+    // the Bedrock SDK gives the Bedrock bearer token precedence over both
     // legacy keys and SigV4 credentials. Preserve that existing behavior.
     if (env[AWS_BEARER_TOKEN_BEDROCK_ENV_KEY]?.trim()) {
       return null;
@@ -657,7 +652,7 @@ export function getMissingProviderEnvKey(
       return legacyPairState.missingEnvKey;
     }
 
-    // A complete legacy pair takes precedence inside @langchain/aws, so
+    // A complete legacy pair takes precedence inside the Bedrock SDK, so
     // unrelated standard AWS env variables cannot affect this provider run.
     if (legacyPairState.complete) {
       return null;
@@ -1112,22 +1107,6 @@ export function resolveStreamIdleTimeoutForProvider(
 }
 
 /**
- * Resolves the LangSmith thread id shared by one repository run's planner and
- * page workers, so their separate traces group into one thread.
- *
- * @param runId - The durable run's id, stable across a resumed run.
- * @param env - Process environment to read.
- * @returns The trimmed override when set and non-empty, else `runId`.
- */
-export function resolveTraceThreadId(
-  runId: string,
-  env: NodeJS.ProcessEnv = process.env,
-): string {
-  const override = env[OPENWIKI_TRACE_THREAD_ID_ENV_KEY]?.trim();
-  return override ? override : runId;
-}
-
-/**
  * Resolves how many repository page workers may run at once.
  *
  * @param env - Process environment to read.
@@ -1243,7 +1222,7 @@ export function resolveOpenAiCompatibleReasoningEffortSupported(
 
 // Opt-in to keep "messages" stream mode for openai-compatible endpoints.
 //
-// The "messages" stream mode makes @langchain/core route `.invoke()`
+// The "messages" stream mode makes the prior model framework route `.invoke()`
 // through `_streamResponseChunks` chunk aggregation. Providers that emit
 // reasoning deltas before the first `role: "assistant"` delta (z.ai GLM
 // via https://api.z.ai/api/coding/paas/v4) aggregate to a
@@ -1264,7 +1243,7 @@ export function resolveOpenAiCompatibleStreamMessages(
 
 // Some OpenAI-compatible gateways only serve the streaming transport: a
 // non-streaming request either gets rejected ("Stream must be set to true") or
-// returns HTTP 200 with empty content. DeepAgents' agent node issues
+// returns HTTP 200 with empty content. agent loop issues
 // non-streaming `.invoke()` calls internally, so those deployments fail
 // silently — the run finishes with a blank wiki and no error. Opting in forces
 // the streaming transport for every generation, the same transport override the
@@ -1382,7 +1361,7 @@ function resolvePositiveIntegerSetting(
 // Sets the per-request output-token ceiling for the Bedrock Converse API.
 // Without an explicit maxTokens, Bedrock caps output at 4096 tokens by
 // default, which truncates long wiki pages mid-write. The default of 16000
-// matches @langchain/anthropic's built-in ceiling for Claude models.
+// matches the prior Anthropic adapter's built-in ceiling for Claude models.
 // Override via OPENWIKI_BEDROCK_MAX_TOKENS for models with a lower ceiling.
 export function resolveBedrockMaxTokens(
   env: NodeJS.ProcessEnv = process.env,

@@ -1,4 +1,4 @@
-import type { BackendProtocolV2 } from "deepagents";
+import type { OpenWikiBackend } from "../agent/backend-types.js";
 import { parse, stringify } from "yaml";
 
 /**
@@ -322,7 +322,7 @@ function isNonEmptyString(value: unknown): value is string {
  * Reads a persisted Markdown file and validates its final front matter.
  */
 export async function validatePersistedFile(
-  backend: BackendProtocolV2,
+  backend: OpenWikiBackend,
   filePath: string,
 ): Promise<FrontmatterValidation> {
   let read;
@@ -335,7 +335,7 @@ export async function validatePersistedFile(
     );
   }
   const content = read.data?.content;
-  if (read.error || content === undefined || content instanceof Uint8Array) {
+  if (read.error || content === undefined || content === null || content instanceof Uint8Array) {
     return invalid(
       "file_read_failed",
       `Could not read the final Markdown text: ${read.error ?? "no text data"}.`,
@@ -352,7 +352,7 @@ export async function validatePersistedFile(
  * validation issues because callers choose whether storage is a fatal boundary.
  */
 export async function repairPersistedFile(
-  backend: BackendProtocolV2,
+  backend: OpenWikiBackend,
   filePath: string,
   conceptType: string = "Reference",
 ): Promise<PersistedFrontmatterRepair> {
@@ -369,7 +369,7 @@ export async function repairPersistedFile(
     };
   }
   const stored = read.data?.content;
-  if (read.error || stored === undefined || stored instanceof Uint8Array) {
+  if (read.error || stored === undefined || stored === null || stored instanceof Uint8Array) {
     return {
       changed: false,
       validation: invalid(

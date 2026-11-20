@@ -826,8 +826,7 @@ export function App({ command }: AppProps) {
         runState.result.savedSecretKey ||
         runState.result.savedGcpProject ||
         runState.result.savedGcpLocation ||
-        runState.result.savedModelId ||
-        runState.result.savedLangSmithKey ? (
+        runState.result.savedModelId ? (
           <StatusLine tone="success" label="Credentials" value="saved" />
         ) : null}
         {runState.result.provider ? (

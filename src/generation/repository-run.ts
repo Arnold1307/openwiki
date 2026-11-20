@@ -617,7 +617,7 @@ export async function beginRepositoryRun(
  *
  * Matches both the standard `"file_not_found"` error code used by some backends
  * and the human-readable `"Error: File '...' not found"` string returned by
- * DeepAgents' filesystem backends (see #765).
+ * previous filesystem backend behavior (see #765).
  */
 function isNotFoundBackendError(error: string): boolean {
   return error === "file_not_found" || error.includes("not found");

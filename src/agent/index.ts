@@ -1,17 +1,6 @@
 import { createHash } from "node:crypto";
-import { chmod, mkdir } from "node:fs/promises";
 import path from "node:path";
-import { scheduler } from "node:timers/promises";
 import { AnthropicVertex } from "@anthropic-ai/vertex-sdk";
-import { ChatAnthropic } from "@langchain/anthropic";
-import { ChatBedrockConverse } from "@langchain/aws";
-import { ChatGoogle } from "@langchain/google/node";
-import { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
-import { ChatOpenAI } from "@langchain/openai";
-import { ChatOpenRouter } from "@langchain/openrouter";
-import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
-import type { Event as ProtocolEvent } from "@langchain/protocol";
-import { createDeepAgent, createFilesystemMiddleware } from "deepagents";
 import { createOpenWikiConnectorTools } from "../connectors/tools.js";
 import {
   DEBUG_ENV_KEYS,
@@ -19,7 +8,6 @@ import {
   openWikiEnvDir,
   saveOpenWikiEnv,
 } from "../config/env.js";
-import { isFileNotFoundError } from "../platform/fs-errors.js";
 import {
   sanitizeDiagnosticText,
   SECRET_KEY_PATTERN_SOURCE,
@@ -35,11 +23,6 @@ import {
 } from "../okf/index-labels.js";
 import { OpenWikiLocalShellBackend } from "./docs-only-backend.js";
 import { getSelectedModelAvailability } from "../model-availability.js";
-import { createOpenWikiIndexMiddleware } from "./okf-middleware.js";
-import {
-  createWikiTranslationMiddleware,
-  resolveTranslationPlan,
-} from "./translation-middleware.js";
 import {
   CODEX_ORIGINATOR,
   CODEX_RESPONSES_BASE_URL,
@@ -53,11 +36,7 @@ import { createBobFetch } from "./bob.js";
 import { createEntraTokenProvider } from "./entra-auth.js";
 import { createSystemPrompt, createUserPrompt } from "./prompt.js";
 import { syncBundledSkills } from "./skills.js";
-import {
-  AGENT_FILESYSTEM_PERMISSIONS,
-  CONVERSATION_HISTORY_MOUNT,
-  createAgentBackend,
-} from "./agent-backend.js";
+import { createAgentBackend } from "./agent-backend.js";
 import { runNativeRepositoryGeneration } from "./repository-runner.js";
 import {
   createVertexAuthFetch,
@@ -152,10 +131,26 @@ import { clearActiveRun, registerActiveRun } from "./crash-guard.js";
 import { inStage, inStageSync, tagErrorStage } from "../telemetry/index.js";
 import type { RunTelemetryContext } from "../telemetry/index.js";
 import { OpenWikiIgnore } from "./openwiki-ignore.js";
+import type { ProviderModel, ModelMessage } from "../model/types.js";
+import { createProviderModel } from "../model/registry.js";
+import type { AgentLoopResult } from "./agent-loop.js";
+import { runAgentLoop } from "./agent-loop.js";
+import { createAgentTools } from "./tool-runtime.js";
+import { readChatHistory, writeChatHistory } from "./chat-history.js";
+import { prepareOpenWikiIndex, finalizeOpenWikiIndex } from "./okf-middleware.js";
+import { resolveTranslationPlan, translateWikiForRun } from "./translation-middleware.js";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function getStringRecordValue(value: unknown, key: string): string | undefined {
+  if (!isRecord(value)) return undefined;
+  const result = value[key];
+  return typeof result === "string" ? result : undefined;
+}
 
 export {
-  AGENT_FILESYSTEM_PERMISSIONS,
-  CONVERSATION_HISTORY_MOUNT,
   createAgentBackend,
 };
 
@@ -196,7 +191,7 @@ export async function runOpenWikiAgent(
       const model = inStageSync(
         "build",
         () =>
-          createModel(
+          createProviderModelForRun(
             config.provider,
             config.modelId,
             config.providerRetryAttempts,
@@ -331,7 +326,7 @@ async function resolveRunConfig(
     ensureProviderRegion(provider);
 
     if (provider === "openai-chatgpt") {
-      // Refresh before the model is built, so `createModel` stays synchronous.
+      // Refresh before the model is built, so provider model creation stays synchronous.
       await ensureFreshChatGptTokens();
       emitDebug(options, "chatgpt.token=fresh");
     }
@@ -392,85 +387,37 @@ export type OpenWikiAgentOptions = {
   command: OpenWikiCommand;
   cwd: string;
   language?: string | null;
-  model: BaseChatModel;
+  model: ProviderModel;
+  modelId: string;
   onEvent?: (event: OpenWikiRunEvent) => void;
   outputMode: OpenWikiOutputMode;
-};
-
-/**
- * Creates an OpenWiki DeepAgent graph from an already-initialized chat model.
- *
- * This low-level factory prepares runtime state but does not own persisted run
- * metadata or successful-run Claims finalization. Use {@link runOpenWikiAgent}
- * for the complete persisted run boundary.
- *
- * @param options - Initialized model and graph options.
- * @returns Configured OpenWiki agent graph.
- */
-export async function createOpenWikiAgent(
-  options: OpenWikiAgentOptions,
-): Promise<ReturnType<typeof createDeepAgent>> {
-  if (!path.isAbsolute(options.cwd)) {
-    throw new Error("OpenWiki agent cwd must be an absolute path.");
-  }
-
-  if (options.outputMode === "repository" && options.command !== "chat") {
-    throw new Error(
-      "Repository init/update use the OpenWiki page-job runner; call runOpenWikiAgent instead of createOpenWikiAgent.",
-    );
-  }
-
-  await syncBundledSkills();
-  const openWikiIgnore =
-    options.outputMode === "repository"
-      ? await OpenWikiIgnore.load(options.cwd)
-      : new OpenWikiIgnore([]);
-  const context = await createRunContext(
-    options.cwd,
-    options.outputMode,
-    options.language,
-  );
-  const checkpointer = await createCheckpointer(
-    resolveCheckpointTarget(options.command),
-  );
-
-  return createOpenWikiAgentGraph({
-    ...options,
-    checkpointer,
-    context,
-    openWikiIgnore,
-    runTimestamp: new Date().toISOString(),
-  });
-}
-
-type OpenWikiAgentGraphOptions = OpenWikiAgentOptions & {
-  /**
-   * SQLite graph checkpointer.
-   */
-  checkpointer: SqliteSaver;
-
-  /**
-   * Persisted run context.
-   */
-  context: RunContext;
-
-  /**
-   * Active repository read boundary.
-   */
-  openWikiIgnore: OpenWikiIgnore;
-
-  /**
-   * Single provenance time shared by generated and verified events.
-   */
+  maxOutputTokens?: number;
+  reasoningEffort?: string;
   runTimestamp: string;
 };
 
-function createOpenWikiAgentGraph(
-  options: OpenWikiAgentGraphOptions,
-): ReturnType<typeof createDeepAgent> {
+export type OpenWikiAgent = {
+  run(messages: ModelMessage[], signal?: AbortSignal): Promise<AgentLoopResult>;
+};
+
+/** Creates an OpenWiki-owned agent session over the confined filesystem backend. */
+export async function createOpenWikiAgent(
+  options: OpenWikiAgentOptions,
+): Promise<OpenWikiAgent> {
+  if (!path.isAbsolute(options.cwd)) {
+    throw new Error("OpenWiki agent cwd must be an absolute path.");
+  }
+  if (options.outputMode === "repository" && options.command !== "chat") {
+    throw new Error("Repository init/update use the page-job runner; call runOpenWikiAgent instead.");
+  }
+  await syncBundledSkills();
+  const openWikiIgnore = options.outputMode === "repository"
+    ? await OpenWikiIgnore.load(options.cwd)
+    : new OpenWikiIgnore([]);
+  const context = await createRunContext(options.cwd, options.outputMode, options.language);
   const wikiBackend = new OpenWikiLocalShellBackend({
     docsOnly: options.command !== "chat",
-    openWikiIgnore: options.openWikiIgnore,
+    openWikiIgnore,
     maxOutputBytes: 100_000,
     outputMode: options.outputMode,
     rootDir: options.cwd,
@@ -478,100 +425,47 @@ function createOpenWikiAgentGraph(
     virtualMode: true,
   });
   const backend = createAgentBackend(wikiBackend);
-  // An update inherits the wiki's persisted language unless --language requests a
-  // different one. The plan drives a beforeAgent pass that, on a switch,
-  // retranslates every page so the incremental update does not leave a mix of the
-  // old and new language, and on any update retries pages a prior run left
-  // pending. It is undefined for init and chat, which never translate.
-  const translation = resolveTranslationPlan(
-    options.command,
-    requireResolvedLanguage(options.language),
-    options.context.lastUpdate?.language,
-  );
-  // Localized headings for the deterministic directory indexes, plus the
-  // localized fallback `type` stamped on pages the code has to repair. Both fall
-  // back to English for any language not in the static maps.
-  const indexLabels = resolveIndexLabels(options.context.language);
-  const conceptType = resolveConceptTypeLabel(options.context.language);
-  // The caller supplies one stamp time for the whole run, shared by generated
-  // provenance here and Claims verification at successful-run finalization.
-  return createDeepAgent({
-    model: options.model,
-    tools: createOpenWikiConnectorTools(options.outputMode),
-    checkpointer: options.checkpointer,
-    backend,
-    middleware: [
-      // DeepAgents also applies this replacement to its general-purpose
-      // subagent. Personal runs have no shell tool, regardless of command.
-      ...(options.outputMode === "local-wiki"
-        ? [
-            createFilesystemMiddleware({
-              backend,
-              permissions: AGENT_FILESYSTEM_PERMISSIONS,
-              tools: [
-                "ls",
-                "read_file",
-                "glob",
-                "grep",
-                "write_file",
-                "edit_file",
-              ],
-            }),
-          ]
-        : []),
-      ...(options.command === "chat"
-        ? []
-        : [
-            ...(translation
-              ? [
-                  createWikiTranslationMiddleware(
-                    wikiBackend,
-                    options.outputMode,
-                    options.model,
-                    translation,
-                    (message) => {
-                      options.onEvent?.({ type: "text", text: message });
-                      // Also emit to stderr so the warning survives the TUI
-                      // re-render and --print's discard of streamed text.
-                      process.stderr.write(`${message}\n`);
-                    },
-                    // The pass announces itself with one line in place of the
-                    // suppressed per-token translation output. It is routine
-                    // progress, so unlike a warning it is not mirrored to stderr.
-                    // The trailing blank line keeps it a distinct Markdown block:
-                    // the TUI coalesces consecutive text events into one
-                    // block-lexed log item, so without it the status would run
-                    // straight into the agent's first streamed line.
-                    (message) => {
-                      options.onEvent?.({
-                        type: "text",
-                        text: `${message}\n\n`,
-                      });
-                    },
-                  ),
-                ]
-              : []),
-            createOpenWikiIndexMiddleware(
-              wikiBackend,
-              options.outputMode,
-              indexLabels,
-              conceptType,
-              options.runTimestamp,
-            ),
-          ]),
-    ],
-    skills: ["/skills/"],
-    subagents: [],
-    permissions: AGENT_FILESYSTEM_PERMISSIONS,
-    systemPrompt: createSystemPrompt(
-      options.command,
-      options.outputMode,
-      options.context.language,
-      options.openWikiIgnore,
-    ),
-  });
+  const tools = createAgentTools(backend, options.outputMode);
+  const prepared = options.command === "chat"
+    ? undefined
+    : await prepareOpenWikiIndex(wikiBackend, options.outputMode, undefined, undefined, options.runTimestamp);
+  const system = createSystemPrompt(options.command, options.outputMode, context.language, openWikiIgnore);
+  const translationPlan = resolveTranslationPlan(options.command, options.language ?? undefined, context.language ?? undefined);
+  return {
+    run: async (messages, signal) => {
+      if (translationPlan) {
+        await translateWikiForRun(
+          wikiBackend,
+          options.outputMode,
+          options.model,
+          translationPlan,
+          (message) => {
+            options.onEvent?.({ type: "text", text: message });
+            process.stderr.write(`${message}\n`);
+          },
+          (message) => {
+            options.onEvent?.({ type: "text", text: message });
+            process.stderr.write(`${message}\n`);
+          },
+        );
+      }
+      const result = await runAgentLoop({
+        model: options.model,
+        modelId: options.modelId,
+        messages: [{ role: "system", content: system }, ...messages],
+        tools,
+        signal,
+        maxOutputTokens: options.maxOutputTokens,
+        reasoningEffort: options.reasoningEffort,
+        onEvent: (event) => {
+          if (event.type === "text") options.onEvent?.({ type: "text", text: event.text });
+        },
+      });
+      if (prepared) await finalizeOpenWikiIndex(wikiBackend, options.outputMode, prepared, undefined, undefined, options.runTimestamp);
+      return result;
+    },
+  };
 }
-
 async function runOpenWikiAgentCore(
   command: OpenWikiCommand,
   cwd: string,
@@ -585,235 +479,139 @@ async function runOpenWikiAgentCore(
   runTimestamp: string,
 ): Promise<OpenWikiRunResult> {
   const outputMode = options.outputMode ?? "local-wiki";
-  const context = await inStage(
-    "build",
-    () => createRunContext(cwd, outputMode, options.language),
-    { errorClass: "build_error", errorDetail: "run_context" },
-  );
+  const context = await inStage("build", () => createRunContext(cwd, outputMode, options.language), {
+    errorClass: "build_error", errorDetail: "run_context",
+  });
   emitDebug(options, "context=created");
-  const openWikiSnapshotBefore =
-    command === "chat"
-      ? null
-      : await inStage(
-          "build",
-          () => createOpenWikiContentSnapshot(cwd, outputMode),
-          { errorClass: "build_error", errorDetail: "snapshot" },
-        );
-  emitDebug(options, "openwiki.snapshot=created");
-  const model = inStageSync(
-    "build",
-    () =>
-      createModel(
-        provider,
-        modelId,
-        providerRetryAttempts,
-        maxOutputTokens,
-        streamIdleTimeout,
-      ),
-    { errorClass: "build_error", errorDetail: "model" },
+  const snapshotBefore = command === "chat" ? null : await inStage(
+    "build", () => createOpenWikiContentSnapshot(cwd, outputMode),
+    { errorClass: "build_error", errorDetail: "snapshot" },
   );
-  emitDebug(options, `model.provider=${provider}`);
-  emitDebug(options, "model=initialized");
+  const model = inStageSync("build", () => createProviderModelForRun(
+    provider, modelId, providerRetryAttempts, maxOutputTokens, streamIdleTimeout,
+  ), { errorClass: "build_error", errorDetail: "model" });
   const threadId = options.threadId ?? createThreadId(cwd, createRunThreadId());
-  emitDebug(options, `thread=${threadId}`);
-  const checkpointTarget = resolveCheckpointTarget(command);
-  const checkpointer = await inStage(
-    "build",
-    () => createCheckpointer(checkpointTarget),
-    { errorClass: "checkpointer_error", errorDetail: "create" },
-  );
-  emitDebug(
-    options,
-    checkpointTarget.persistent
-      ? `checkpointer=${formatUrlDebugValue(checkpointTarget.connString)}`
-      : "checkpointer=memory",
-  );
-  const agent = inStageSync(
-    "build",
-    () =>
-      createOpenWikiAgentGraph({
-        command,
-        cwd,
-        language: options.language,
-        model,
-        onEvent: options.onEvent,
-        outputMode,
-        checkpointer,
-        context,
-        openWikiIgnore,
-        runTimestamp,
-      }),
-    { errorClass: "build_error", errorDetail: "agent" },
-  );
-  emitDebug(options, "agent=created");
-
-  const input = {
-    messages: [
-      {
-        role: "user",
-        content: createRunUserMessage(command, cwd, context, options),
-      },
-    ],
-  };
-
-  // "messages" stream mode forces @langchain/core to route the model's
-  // `.invoke()` through chunk aggregation. Providers that stream reasoning
-  // deltas before the first `role: "assistant"` delta (z.ai GLM) aggregate to
-  // a ChatMessageChunk, which the agent loop's wrapModelCall validator
-  // rejects: `expected AIMessage or Command, got object` (issue #659). The
-  // openai-compatible provider can point at any endpoint, so it gets the
-  // safe "updates" mode by default; known-good endpoints can opt back in
-  // with OPENWIKI_OPENAI_COMPATIBLE_STREAM_MESSAGES=true.
-  const streamMessagesEnabled =
-    provider !== "openai-compatible" || resolveOpenAiCompatibleStreamMessages();
-  const streamModes = streamMessagesEnabled
-    ? (["messages", "tools"] as const)
-    : (["updates", "tools"] as const);
-  const streamModesLabel = streamModes.join(",");
-  emitDebug(options, `stream=opening modes=${streamModesLabel} subgraphs=true`);
-  const stream = await inStage(
-    "build",
-    () =>
-      agent.stream(input, {
-        configurable: {
-          thread_id: threadId,
-        },
-        streamMode: [...streamModes],
-        subgraphs: true,
-      }),
-    { errorClass: "build_error", errorDetail: "stream_open" },
-  );
-  emitDebug(options, `stream=started modes=${streamModesLabel} subgraphs=true`);
-
-  // Register with the crash guard for exactly the stream-consumption window so
-  // escaped runtime failures become interrupted-stamped runs instead of silent
-  // process aborts. The finally clears the registration after every run.
+  const history = command === "chat" && options.isFollowup === true
+    ? await readChatHistory(threadId)
+    : [];
+  const messages: ModelMessage[] = [...history, {
+    role: "user",
+    content: createRunUserMessage(command, cwd, context, options),
+  }];
+  const agent = await createOpenWikiAgent({
+    command, cwd, language: options.language, model, modelId, onEvent: options.onEvent, outputMode,
+    maxOutputTokens: provider === "openrouter" ? (resolveOpenRouterMaxTokens() ?? maxOutputTokens) : maxOutputTokens,
+    reasoningEffort: resolveReasoningConfig(provider, modelId, process.env, {
+      useResponsesApi: providerUsesResponsesApi(provider, modelId),
+    })?.effort,
+    runTimestamp,
+  });
   registerActiveRun({
-    command,
-    cwd,
-    modelId,
-    outputMode,
-    snapshotBefore: openWikiSnapshotBefore ?? undefined,
+    command, cwd, modelId, outputMode,
+    snapshotBefore: snapshotBefore ?? undefined,
     language: context.language,
   });
-
-  let unhandledChunkCount = 0;
-
   try {
-    for await (const chunk of stream) {
-      const event = parseAgentStreamChunk(chunk);
-
-      if (event) {
-        options.onEvent?.(event);
-        // React batches updates from the async iterator; yield so Ink can paint
-        // streamed text before the iterator completes.
-        await scheduler.yield();
-      } else if (options.debug && unhandledChunkCount < 3) {
-        emitDebug(
-          options,
-          `stream.unhandledChunk ${describeStreamChunkShape(chunk)}`,
-        );
-        unhandledChunkCount += 1;
-      }
+    const result = await inStage("run", () => agent.run(messages), { errorClass: "agent_error" });
+    if (command === "chat") {
+      await writeChatHistory(threadId, result.messages);
     }
-    emitDebug(options, "stream=completed");
+    clearActiveRun();
+    const metadataWritten = await persistRunMetadataIfChanged(
+      command, cwd, modelId, outputMode, snapshotBefore, "complete", context.language,
+    );
+    emitDebug(options, metadataWritten ? "metadata=written" : "metadata=skipped");
+    return { command, model: modelId };
   } catch (error) {
     tagErrorStage(error, "run");
-
-    // Persist metadata even when the stream fails late, so content that was
-    // already generated stays diffable by future updates. The run is recorded
-    // as interrupted so the next update is not skipped as a no-op against a
-    // possibly partial wiki. Persistence errors are swallowed here so the
-    // original run error propagates.
-    try {
-      const metadataWritten = await persistRunMetadataIfChanged(
-        command,
-        cwd,
-        modelId,
-        outputMode,
-        openWikiSnapshotBefore,
-        "interrupted",
-        context.language,
-      );
-      emitDebug(
-        options,
-        metadataWritten ? "metadata=written" : "metadata=skipped",
-      );
-    } catch {
-      emitDebug(options, "metadata=writeFailed");
-    }
-
-    throw error;
-  } finally {
     clearActiveRun();
-    prunePersistentCheckpointHistory(
-      checkpointTarget,
-      checkpointer,
-      threadId,
-      options,
-    );
-  }
-
-  if (checkpointTarget.persistent) {
-    // Locking down the checkpoint file is a checkpointer concern; a filesystem
-    // failure here owns to us, not the user, so it carries its own class rather
-    // than the stage-only tag the metadata write below relies on.
-    await inStage(
-      "finalize",
-      () => chmodIfExists(checkpointTarget.connString, 0o600),
-      { errorClass: "checkpointer_error", errorDetail: "chmod" },
-    );
-  }
-
-  // Stage-only tag: a write failure here classifies from the raw error (a
-  // filesystem code becomes filesystem_error), and deriveOwner's finalize
-  // exception routes that to openwiki since the run reached our own persistence.
-  let metadataWritten: boolean;
-
-  try {
-    metadataWritten = await inStage("finalize", async () => {
-      return persistRunMetadataIfChanged(
-        command,
-        cwd,
-        modelId,
-        outputMode,
-        openWikiSnapshotBefore,
-        "complete",
-        context.language,
-      );
-    });
-  } catch (error) {
-    try {
+    if (command !== "chat") {
       await persistRunMetadataIfChanged(
-        command,
-        cwd,
-        modelId,
-        outputMode,
-        openWikiSnapshotBefore,
-        "interrupted",
-        context.language,
-      );
-    } catch {
-      emitDebug(options, "metadata=writeFailed");
+        command, cwd, modelId, outputMode, snapshotBefore, "interrupted", context.language,
+      ).catch(() => undefined);
     }
     throw error;
   }
+}
+function createProviderModelForRun(
+  provider: OpenWikiProvider,
+  modelId: string,
+  maxRetries: number,
+  maxOutputTokens: number | undefined,
+  streamIdleTimeout: number | undefined,
+): ProviderModel {
+  const bindModelId = (model: ProviderModel): ProviderModel => Object.assign(model, {
+    modelId,
+    defaultMaxOutputTokens: maxOutputTokens,
+    defaultReasoningEffort: reasoningEffort,
+  });
+  const baseUrl = resolveProviderBaseUrl(provider);
+  const useResponsesApi = providerUsesResponsesApi(provider, modelId);
+  const reasoningEffort = resolveReasoningConfig(provider, modelId, process.env, { useResponsesApi })?.effort;
+  const common = { maxRetries, maxOutputTokens, reasoningEffort };
 
-  if (metadataWritten) {
-    emitDebug(options, "metadata=written");
-  } else {
-    emitDebug(
-      options,
-      command === "chat"
-        ? "metadata=skipped command=chat"
-        : "metadata=skipped openwiki=unchanged",
-    );
+  if (provider === "openai-chatgpt") {
+    const tokens = readCodexTokensFromEnv();
+    if (!tokens) throw new Error(CHATGPT_LOGIN_INCOMPLETE_MESSAGE);
+    return bindModelId(createProviderModel(provider, modelId, {
+      ...common,
+      apiKey: tokens.access,
+      baseUrl: CODEX_RESPONSES_BASE_URL,
+      defaultHeaders: {
+        "chatgpt-account-id": tokens.accountId,
+        originator: CODEX_ORIGINATOR,
+        "OpenAI-Beta": "responses=experimental",
+      },
+      fetch: createCodexFetch(modelId),
+      useResponsesApi: true,
+    }));
   }
-
-  return {
-    command,
-    model: modelId,
-  };
+  if (provider === "gemini-enterprise") {
+    const projectId = process.env[GOOGLE_CLOUD_PROJECT_ENV_KEY];
+    if (!projectId) throw new Error(`${GOOGLE_CLOUD_PROJECT_ENV_KEY} is required for the gemini-enterprise provider.`);
+    return bindModelId(createProviderModel(provider, modelId, {
+      ...common, projectId,
+      location: resolveProviderLocation(provider) ?? DEFAULT_VERTEX_LOCATION,
+      fetch: createVertexAuthFetch(), streamIdleTimeout,
+    }));
+  }
+  if (provider === "bedrock") {
+    return bindModelId(createProviderModel(provider, modelId, { ...common, region: resolveProviderRegion(provider), streamIdleTimeout }));
+  }
+  if (provider === "anthropic") {
+    return bindModelId(createProviderModel(provider, modelId, {
+      ...common, apiKey: getProviderApiKey(provider), baseUrl,
+      maxOutputTokens: resolveAnthropicMaxOutputTokens(modelId, maxOutputTokens),
+    }));
+  }
+  if (provider === "gemini") {
+    return bindModelId(createProviderModel(provider, modelId, { ...common, apiKey: getProviderApiKey(provider), baseUrl }));
+  }
+  if (provider === "openrouter") {
+    const providerOnly = resolveOpenRouterProviderOnly();
+    return bindModelId(createProviderModel(provider, modelId, {
+      ...common,
+      apiKey: process.env[OPENROUTER_API_KEY_ENV_KEY],
+      baseUrl: OPENROUTER_BASE_URL,
+      defaultHeaders: { "HTTP-Referer": "https://github.com/langchain-ai/openwiki", "X-Title": "OpenWiki" },
+      extraBody: providerOnly ? { provider: { only: providerOnly } } : undefined,
+    }));
+  }
+  if (provider === "bob") {
+    return bindModelId(createProviderModel(provider, modelId, {
+      ...common, apiKey: "bob-placeholder",
+      baseUrl: baseUrl ?? "https://api.us-east.bob.ibm.com/inference/v1",
+      fetch: createBobFetch(),
+    }));
+  }
+  const apiKey = providerUsesEntraId(provider)
+    ? createEntraTokenProvider(baseUrl, resolveOpenAICompatibleEntraScope())
+    : getProviderApiKey(provider);
+  return bindModelId(createProviderModel(provider, modelId, {
+    ...common, apiKey, baseUrl,
+    fetch: provider === "openai-compatible" && !useResponsesApi ? createOpenAiCompatibleFetch() : undefined,
+    useResponsesApi,
+  }));
 }
 
 /**
@@ -842,122 +640,6 @@ function createRunUserMessage(
     options.outputMode ?? "local-wiki",
     cwd,
   );
-}
-
-const checkpointPath = path.join(openWikiEnvDir, "openwiki.sqlite");
-
-export type CheckpointTarget = {
-  connString: string;
-  persistent: boolean;
-};
-
-async function createCheckpointer(
-  target: CheckpointTarget,
-): Promise<SqliteSaver> {
-  if (target.persistent) {
-    await prepareCheckpointDirectory(target.connString);
-  }
-
-  return SqliteSaver.fromConnString(target.connString);
-}
-
-async function prepareCheckpointDirectory(filePath: string): Promise<void> {
-  const checkpointDir = path.dirname(filePath);
-  await mkdir(checkpointDir, {
-    recursive: true,
-    mode: 0o700,
-  });
-  await chmodIfExists(checkpointDir, 0o700);
-}
-
-// SqliteSaver.put() only ever inserts new checkpoint rows; nothing in the
-// checkpointer itself prunes older ones. A chat session reuses the same
-// thread_id for every turn, so the sqlite file grows by a full state
-// snapshot on every graph step for as long as the session runs. OpenWiki
-// never resumes a chat turn from anything but the latest checkpoint, so
-// history beyond that is pure waste and safe to discard here.
-export function pruneCheckpointHistory(
-  checkpointer: SqliteSaver,
-  threadId: string,
-): void {
-  const prune = checkpointer.db.transaction((id: string) => {
-    checkpointer.db
-      .prepare(
-        `DELETE FROM checkpoints
-         WHERE thread_id = ?
-           AND (checkpoint_ns, checkpoint_id) NOT IN (
-             SELECT checkpoint_ns, checkpoint_id FROM (
-               SELECT checkpoint_ns, checkpoint_id,
-                      ROW_NUMBER() OVER (
-                        PARTITION BY checkpoint_ns ORDER BY checkpoint_id DESC
-                      ) AS rank
-               FROM checkpoints
-               WHERE thread_id = ?
-             )
-             WHERE rank = 1
-           )`,
-      )
-      .run(id, id);
-
-    checkpointer.db
-      .prepare(
-        `DELETE FROM writes
-         WHERE thread_id = ?
-           AND (checkpoint_ns, checkpoint_id) NOT IN (
-             SELECT checkpoint_ns, checkpoint_id FROM checkpoints WHERE thread_id = ?
-             UNION
-             SELECT checkpoint_ns, parent_checkpoint_id FROM checkpoints
-             WHERE thread_id = ? AND parent_checkpoint_id IS NOT NULL
-           )`,
-      )
-      .run(id, id, id);
-  });
-
-  prune(threadId);
-}
-
-function prunePersistentCheckpointHistory(
-  checkpointTarget: CheckpointTarget,
-  checkpointer: SqliteSaver,
-  threadId: string,
-  options: OpenWikiRunOptions,
-): void {
-  if (!checkpointTarget.persistent) {
-    return;
-  }
-
-  try {
-    pruneCheckpointHistory(checkpointer, threadId);
-    emitDebug(options, "checkpoint.pruned");
-  } catch {
-    emitDebug(options, "checkpoint.pruneFailed");
-  }
-}
-
-export function resolveCheckpointTarget(
-  command: OpenWikiCommand,
-): CheckpointTarget {
-  if (command === "chat") {
-    return {
-      connString: checkpointPath,
-      persistent: true,
-    };
-  }
-
-  return {
-    connString: ":memory:",
-    persistent: false,
-  };
-}
-
-async function chmodIfExists(filePath: string, mode: number): Promise<void> {
-  try {
-    await chmod(filePath, mode);
-  } catch (error) {
-    if (!isFileNotFoundError(error)) {
-      throw error;
-    }
-  }
 }
 
 export function createOpenWikiThreadId(cwd = process.cwd()): string {
@@ -1115,225 +797,6 @@ function warnOnProviderModelMismatch(
   process.stderr.write(`${message}\n`);
 }
 
-export function createModel(
-  provider: OpenWikiProvider,
-  modelId: string,
-  providerRetryAttempts: number,
-  maxOutputTokens?: number,
-  streamIdleTimeout?: number,
-) {
-  const retryOptions = { maxRetries: providerRetryAttempts };
-  const configuredMaxOutputTokens =
-    maxOutputTokens ?? resolveConfiguredMaxOutputTokens(provider);
-  const maxTokensOptions =
-    configuredMaxOutputTokens === undefined
-      ? {}
-      : { maxTokens: configuredMaxOutputTokens };
-  const googleMaxOutputTokensOptions =
-    configuredMaxOutputTokens === undefined
-      ? {}
-      : { maxOutputTokens: configuredMaxOutputTokens };
-  const streamIdleTimeoutOptions =
-    streamIdleTimeout === undefined ? {} : { streamIdleTimeout };
-  const chatOpenAiUsesResponsesApi = providerUsesResponsesApi(
-    provider,
-    modelId,
-  );
-  const reasoningConfig = resolveReasoningConfig(
-    provider,
-    modelId,
-    process.env,
-    {
-      useResponsesApi: chatOpenAiUsesResponsesApi,
-    },
-  );
-
-  // GPT-5.6 supports `max` before some OpenAI SDK type unions include it. The
-  // documented Responses payload is still `reasoning: { effort }`, so keep the
-  // compatibility cast narrowly at the ChatOpenAI constructor boundary.
-  const responsesReasoningOptions =
-    reasoningConfig?.transport === "responses-reasoning"
-      ? { reasoning: { effort: reasoningConfig.effort as never } }
-      : {};
-  const chatCompletionsReasoningOptions =
-    reasoningConfig?.transport === "chat-completions-reasoning-effort"
-      ? { modelKwargs: { reasoning_effort: reasoningConfig.effort } }
-      : {};
-  const geminiThinkingLevelOptions =
-    reasoningConfig?.transport === "gemini-thinking-level"
-      ? { thinkingLevel: reasoningConfig.effort }
-      : {};
-
-  if (provider === "gemini") {
-    return new ChatGoogle({
-      apiKey: getProviderApiKey(provider),
-      model: modelId,
-      platformType: "gai",
-      // Gemini 3.x thought-signature round-trip; see the constant's comment.
-      ...GEMINI_THOUGHT_SIGNATURE_OPTIONS,
-      ...geminiThinkingLevelOptions,
-      ...googleMaxOutputTokensOptions,
-      ...retryOptions,
-    });
-  }
-
-  if (provider === "gemini-enterprise") {
-    const projectId = process.env[GOOGLE_CLOUD_PROJECT_ENV_KEY];
-
-    if (!projectId) {
-      throw new Error(
-        `${GOOGLE_CLOUD_PROJECT_ENV_KEY} is required for the gemini-enterprise provider.`,
-      );
-    }
-
-    // resolveProviderLocation prefers GOOGLE_CLOUD_LOCATION, else the
-    // provider's defaultLocation ("global"), so this is always a string.
-    const location =
-      resolveProviderLocation(provider) ?? DEFAULT_VERTEX_LOCATION;
-
-    return createGeminiEnterpriseModel(
-      modelId,
-      projectId,
-      location,
-      retryOptions,
-      configuredMaxOutputTokens,
-    );
-  }
-
-  if (provider === "anthropic") {
-    const baseURL = resolveProviderBaseUrl(provider);
-    const maxTokens = resolveAnthropicMaxOutputTokens(
-      modelId,
-      configuredMaxOutputTokens,
-    );
-
-    return new ChatAnthropic(modelId, {
-      apiKey: getProviderApiKey(provider),
-      ...(baseURL ? { anthropicApiUrl: baseURL } : {}),
-      ...(maxTokens !== undefined ? { maxTokens } : {}),
-      ...retryOptions,
-    });
-  }
-
-  if (provider === "openai-chatgpt") {
-    // Already refreshed by `ensureFreshChatGptTokens()` before the run started.
-    const tokens = readCodexTokensFromEnv();
-
-    if (!tokens) {
-      throw new Error(CHATGPT_LOGIN_INCOMPLETE_MESSAGE);
-    }
-
-    // Reuse LangChain's existing ChatOpenAI Responses-API integration (correct
-    // tool-calling + SSE parsing for DeepAgents) pointed at the Codex backend:
-    // - useResponsesApi routes to POST {baseURL}/responses
-    // - zdrEnabled forces `store: false`, which the Codex backend requires
-    // - defaultHeaders carry the account id / originator / beta header
-    return new ChatOpenAI({
-      apiKey: tokens.access,
-      model: modelId,
-      useResponsesApi: true,
-      zdrEnabled: true,
-      // The Codex backend rejects non-streaming requests
-      // ("Stream must be set to true"), so force the streaming transport for
-      // every generation — including the non-streaming `.invoke()` calls
-      // DeepAgents' agent node issues internally.
-      streaming: true,
-      ...maxTokensOptions,
-      ...responsesReasoningOptions,
-      ...retryOptions,
-      configuration: {
-        baseURL: CODEX_RESPONSES_BASE_URL,
-        defaultHeaders: {
-          "chatgpt-account-id": tokens.accountId,
-          originator: CODEX_ORIGINATOR,
-          "OpenAI-Beta": "responses=experimental",
-        },
-        fetch: createCodexFetch(modelId),
-      },
-    });
-  }
-
-  if (provider === "openrouter") {
-    const providerOnly = resolveOpenRouterProviderOnly();
-    const legacyMaxTokens = resolveOpenRouterMaxTokens();
-    const effectiveMaxTokens = legacyMaxTokens ?? configuredMaxOutputTokens;
-
-    return new ChatOpenRouter({
-      apiKey: process.env[OPENROUTER_API_KEY_ENV_KEY],
-      baseURL: OPENROUTER_BASE_URL,
-      model: modelId,
-      ...(effectiveMaxTokens !== undefined
-        ? { maxTokens: effectiveMaxTokens }
-        : {}),
-      provider: providerOnly ? { only: providerOnly } : undefined,
-      siteName: "OpenWiki",
-      ...retryOptions,
-    });
-  }
-
-  if (provider === "bedrock") {
-    return new ChatBedrockConverse({
-      model: modelId,
-      region: resolveProviderRegion(provider),
-      ...maxTokensOptions,
-      ...streamIdleTimeoutOptions,
-      ...retryOptions,
-    });
-  }
-
-  const baseURL = resolveProviderBaseUrl(provider);
-  const configuration =
-    provider === "openai-compatible" && !chatOpenAiUsesResponsesApi
-      ? {
-          ...(baseURL ? { baseURL } : {}),
-          fetch: createOpenAiCompatibleFetch(),
-        }
-      : baseURL
-        ? {
-            baseURL,
-          }
-        : undefined;
-
-  if (provider === "bob") {
-    return new ChatOpenAI({
-      // Placeholder silences the ChatOpenAI constructor's "missing apiKey"
-      // check; the real key is injected via the custom fetch wrapper below.
-      apiKey: "bob-placeholder",
-      configuration: {
-        baseURL: baseURL ?? "https://api.us-east.bob.ibm.com/inference/v1",
-        fetch: createBobFetch(),
-      },
-      model: modelId,
-      ...maxTokensOptions,
-      ...(providerUsesStreaming(provider) ? { streaming: true } : {}),
-      ...retryOptions,
-    });
-  }
-
-  return new ChatOpenAI({
-    apiKey: providerUsesEntraId(provider)
-      ? createEntraTokenProvider(baseURL, resolveOpenAICompatibleEntraScope())
-      : getProviderApiKey(provider),
-    configuration,
-    model: modelId,
-    useResponsesApi: chatOpenAiUsesResponsesApi,
-    // OpenAI-compatible gateways may treat omitted strict mode differently.
-    // These tools use optional fields, so preserve their non-strict semantics.
-    ...(provider === "openai-compatible"
-      ? { supportsStrictToolCalling: false }
-      : {}),
-    ...maxTokensOptions,
-    ...responsesReasoningOptions,
-    ...chatCompletionsReasoningOptions,
-    // Some gateways only serve the streaming transport; see
-    // resolveOpenAiCompatibleStreaming for the full rationale. Spread rather
-    // than assigning a boolean: `streaming: false` is not the same as omitting
-    // the key, because LangChain turns it into `disableStreaming`.
-    ...(providerUsesStreaming(provider) ? { streaming: true } : {}),
-    ...retryOptions,
-  });
-}
-
 function createOpenAiCompatibleFetch(): typeof fetch {
   return (input, init) =>
     globalThis.fetch(
@@ -1448,7 +911,7 @@ const CHATGPT_LOGIN_INCOMPLETE_MESSAGE =
 /**
  * Refreshes the persisted ChatGPT OAuth tokens once at startup when they are
  * expired/near-expiry, writing the rotated tokens back to `~/.openwiki/.env`
- * (which also updates `process.env`, so `createModel` can stay synchronous).
+ * (which also updates `process.env`, so provider model creation can stay synchronous).
  * This is a short-lived CLI process, so a single refresh-at-startup is enough:
  * there is no background refresh loop.
  */
@@ -1476,662 +939,6 @@ function getProviderApiKey(provider: OpenWikiProvider): string | undefined {
 
 // Placeholder OpenAI API key for the Vertex MaaS surface; overwritten per
 // request by the auth fetch's Authorization header (see createVertexAuthFetch).
-const VERTEX_ADC_PLACEHOLDER_KEY = "vertex-adc";
-
-// Gemini 3.x rejects multi-turn tool calls whose function-call parts lack their
-// `thoughtSignature`. LangChain's streaming aggregator (core stream.js)
-// unconditionally re-emits the message as v1 standard content blocks, which drop
-// that provider-specific signature — so the next turn 400s ("Function call is
-// missing a thought_signature"). Disabling streaming routes the call through
-// invoke()/generate, which honors outputVersion: "v0" and preserves the raw
-// Gemini content parts (signature intact) that the v0 converter round-trips
-// correctly. Both ChatGoogle surfaces (AI Studio `gemini` and enterprise Gemini)
-// must apply this in lockstep, so it lives in one place.
-const GEMINI_THOUGHT_SIGNATURE_OPTIONS = {
-  disableStreaming: true,
-  outputVersion: "v0",
-} as const;
-
-/**
- * Chooses the Anthropic request limit without imposing a modern limit on older
- * or custom Claude models that may expose a smaller output window.
- *
- * LangChain 1.5.1 falls back to 4,096 tokens for model IDs it does not know,
- * including OpenWiki's current Claude 4/5 aliases. OpenWiki raises that default
- * to 16,384 only for modern Claude families. An explicit provider-neutral
- * setting always wins, including for custom model IDs.
- *
- * @param modelId - Direct or Vertex publisher-qualified Anthropic model ID.
- * @param configuredMaxOutputTokens - Explicit OpenWiki setting, when present.
- * @returns The explicit limit, modern-Claude default, or `undefined`.
- */
-function resolveAnthropicMaxOutputTokens(
-  modelId: string,
-  configuredMaxOutputTokens: number | undefined,
-): number | undefined {
-  if (configuredMaxOutputTokens !== undefined) {
-    return configuredMaxOutputTokens;
-  }
-
-  const normalizedModelId = stripPublisherPath(modelId);
-
-  return /^claude-(?:haiku|sonnet|opus)-(?:4|5)(?:[-.@]|$)/u.test(
-    normalizedModelId,
-  )
-    ? DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS
-    : undefined;
-}
-
-/**
- * Builds the right LangChain chat model for a Gemini Enterprise (Vertex AI)
- * model ID. Vertex Model Garden serves different model families over different
- * API surfaces (native Gemini, Anthropic rawPredict, OpenAI-compatible MaaS),
- * each needing a different client. Auth is uniform (ADC + project + region);
- * only the transport differs, keyed off the model ID via resolveVertexSurface.
- */
-function createGeminiEnterpriseModel(
-  modelId: string,
-  projectId: string,
-  location: string,
-  retryOptions: { maxRetries: number },
-  maxOutputTokens?: number,
-) {
-  const maxTokensOptions =
-    maxOutputTokens === undefined ? {} : { maxTokens: maxOutputTokens };
-  const googleMaxOutputTokensOptions =
-    maxOutputTokens === undefined ? {} : { maxOutputTokens };
-
-  switch (resolveVertexSurface(modelId)) {
-    case "anthropic": {
-      const maxTokens = resolveAnthropicMaxOutputTokens(
-        modelId,
-        maxOutputTokens,
-      );
-
-      // No JS-native Claude-on-Vertex chat model exists; bridge via
-      // ChatAnthropic's `createClient` hook + the Anthropic Vertex SDK, which
-      // authenticates through ADC. Providing `createClient` also removes the
-      // ANTHROPIC_API_KEY requirement. The env is neutralized around the
-      // constructor so a stray ANTHROPIC_API_KEY/ANTHROPIC_AUTH_TOKEN cannot
-      // clobber the Google OAuth token (see withAnthropicAuthEnvNeutralized).
-      //
-      // dangerouslyAllowBrowser: the Anthropic SDK (base of AnthropicVertex)
-      // refuses to construct when it detects `window`/`document`/`navigator` —
-      // its browser-credential-exposure guard. OpenWiki is always a Node CLI/CI
-      // process, but the optional Mermaid validation path installs jsdom DOM
-      // globals process-wide (see src/mermaid/dom-shim.ts), which trips that
-      // guard and aborts the whole run before any docs are generated. ChatAnthropic
-      // passes `dangerouslyAllowBrowser: true` into `createClient`, but this hook
-      // ignores its argument, so the flag is set explicitly here. It is forwarded
-      // to AnthropicVertex only — never the ANTHROPIC_* auth options LangChain
-      // also passes, which would defeat withAnthropicAuthEnvNeutralized.
-      return new ChatAnthropic(stripPublisherPath(modelId), {
-        createClient: () =>
-          withAnthropicAuthEnvNeutralized(
-            () =>
-              new AnthropicVertex({
-                projectId,
-                region: location,
-                dangerouslyAllowBrowser: true,
-              }),
-          ),
-        ...(maxTokens !== undefined ? { maxTokens } : {}),
-        ...retryOptions,
-      });
-    }
-
-    case "openai-maas":
-      // Partner/open-weight models (Llama, Mistral, DeepSeek, Qwen, …) are
-      // reached over Vertex's OpenAI-compatible endpoint. The bearer token is
-      // injected per request by a fetch wrapper (see createVertexAuthFetch);
-      // `apiKey` is a placeholder because that header is overwritten.
-      return new ChatOpenAI({
-        apiKey: VERTEX_ADC_PLACEHOLDER_KEY,
-        configuration: {
-          baseURL: vertexOpenAIBaseUrl(projectId, location),
-          fetch: createVertexAuthFetch(),
-        },
-        model: toVertexPublisherModel(modelId),
-        ...maxTokensOptions,
-        ...retryOptions,
-      });
-
-    default:
-      return new ChatGoogle({
-        // Gemini/Gemma over generateContent wants the bare model ID; normalize a
-        // fully publisher-pathed ID (publishers/google/models/gemini-…) the same
-        // way the anthropic and maas branches normalize theirs.
-        model: stripPublisherPath(modelId),
-        platformType: "gcp",
-        // Gemini 3.x thought-signature round-trip; see the constant's comment.
-        ...GEMINI_THOUGHT_SIGNATURE_OPTIONS,
-        // Force ADC + project auth. The node client resolves
-        // `apiKey ?? GOOGLE_API_KEY`, and when an API key is present it both
-        // sends the X-Goog-Api-Key header and flips to Vertex Express mode — so
-        // a stray GOOGLE_API_KEY in the environment would silently hijack this
-        // enterprise path. An empty string is treated as "no API key"
-        // (hasApiKey() checks `!== ""`), which blocks that fallback.
-        apiKey: "",
-        location,
-        // Pass the project explicitly rather than relying on ambient
-        // process.env, using the `/node` entrypoint where googleAuthOptions is
-        // typed (the default entrypoint types authOptions as `never`).
-        googleAuthOptions: { projectId },
-        ...googleMaxOutputTokensOptions,
-        ...retryOptions,
-      });
-  }
-}
-
-export function parseAgentStreamChunk(chunk: unknown): OpenWikiRunEvent | null {
-  if (!isAgentStreamChunk(chunk)) {
-    return null;
-  }
-
-  const [namespace, mode, payload] = chunk;
-
-  if (mode === "tools") {
-    return parseToolStreamEvent(payload);
-  }
-
-  if (mode === "updates") {
-    return parseUpdatesChunk(namespace, payload);
-  }
-
-  const text = extractMessageText(payload);
-
-  return text.length > 0
-    ? {
-        source: getStreamSource(namespace),
-        type: "text",
-        text,
-      }
-    : null;
-}
-
-/**
- * Parses the Agent Protocol event shape exposed by the public agent factory.
- */
-export function parseStreamEvent(chunk: unknown): OpenWikiRunEvent | null {
-  if (!isProtocolStreamEvent(chunk)) {
-    return null;
-  }
-
-  if (chunk.method === "messages") {
-    const text = extractMessageText(chunk.params.data);
-
-    return text.length > 0
-      ? {
-          source: getStreamSource(chunk.params.namespace),
-          type: "text",
-          text,
-        }
-      : null;
-  }
-
-  if (chunk.method === "tools") {
-    return parseToolStreamEvent(chunk.params.data);
-  }
-
-  return null;
-}
-
-function isProtocolStreamEvent(value: unknown): value is ProtocolEvent {
-  return (
-    isRecord(value) &&
-    value.type === "event" &&
-    typeof value.method === "string" &&
-    isRecord(value.params) &&
-    "data" in value.params
-  );
-}
-
-function isAgentStreamChunk(
-  value: unknown,
-): value is [string[], "messages" | "tools" | "updates", unknown] {
-  return (
-    Array.isArray(value) &&
-    value.length === 3 &&
-    Array.isArray(value[0]) &&
-    value[0].every((part) => typeof part === "string") &&
-    (value[1] === "messages" || value[1] === "tools" || value[1] === "updates")
-  );
-}
-
-/**
- * Extracts the last assistant text from an "updates" mode state-delta chunk.
- * LangGraph "updates" chunks carry the per-node state diff rather than raw
- * message tokens, so the payload is { nodeName: { messages: [...] }, ... }.
- * We iterate the node outputs and return the first non-empty assistant text.
- */
-function parseUpdatesChunk(
-  namespace: string[],
-  payload: unknown,
-): OpenWikiRunEvent | null {
-  if (!isRecord(payload)) {
-    return null;
-  }
-
-  for (const nodeOutput of Object.values(payload)) {
-    const text = extractMessageText(nodeOutput);
-
-    if (text.length > 0) {
-      return {
-        source: getStreamSource(namespace),
-        type: "text",
-        text,
-      };
-    }
-  }
-
-  return null;
-}
-
-function extractMessageText(payload: unknown): string {
-  return extractMessageTextValue(payload, new Set());
-}
-
-function extractMessageTextValue(payload: unknown, seen: Set<object>): string {
-  if (typeof payload === "string") {
-    return payload;
-  }
-
-  if (Array.isArray(payload)) {
-    if (payload.length === 2 && isStreamMessageTuplePayload(payload)) {
-      return extractMessageTextValue(payload[0], seen);
-    }
-
-    for (const item of payload) {
-      const text = extractMessageTextValue(item, seen);
-
-      if (text.length > 0) {
-        return text;
-      }
-    }
-
-    return payload.map((item) => extractContentBlockText(item, seen)).join("");
-  }
-
-  if (!isRecord(payload) || seen.has(payload)) {
-    return "";
-  }
-
-  seen.add(payload);
-
-  if (isRecord(payload.chunk)) {
-    const text = extractMessageTextValue(payload.chunk, seen);
-
-    if (text.length > 0) {
-      return text;
-    }
-  }
-
-  if (isRecord(payload.message)) {
-    const text = extractMessageTextValue(payload.message, seen);
-
-    if (text.length > 0) {
-      return text;
-    }
-  }
-
-  if (!shouldReadMessageRecord(payload)) {
-    return "";
-  }
-
-  const contentText = extractContentText(payload.content, seen);
-
-  if (contentText.length > 0) {
-    return contentText;
-  }
-
-  for (const key of [
-    "text",
-    "output",
-    "generations",
-    "messages",
-    "kwargs",
-    "lc_kwargs",
-  ]) {
-    const text = extractMessageTextValue(payload[key], seen);
-
-    if (text.length > 0) {
-      return text;
-    }
-  }
-
-  return "";
-}
-
-function isStreamMessageTuplePayload(payload: unknown[]): boolean {
-  const [message, metadata] = payload;
-
-  if (!isRecord(metadata) || !isMessageLikeRecord(message)) {
-    return false;
-  }
-
-  if (
-    "langgraph_node" in metadata ||
-    "run_id" in metadata ||
-    "tags" in metadata ||
-    "metadata" in metadata
-  ) {
-    return true;
-  }
-
-  return (
-    "langgraph_node" in message ||
-    "checkpoint_ns" in message ||
-    "thread_id" in message
-  );
-}
-
-function isMessageLikeRecord(value: unknown): value is Record<string, unknown> {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return (
-    "content" in value ||
-    "text" in value ||
-    "kwargs" in value ||
-    "lc_kwargs" in value ||
-    typeof value._getType === "function" ||
-    getMessageRole(value) !== null ||
-    hasSerializedMessageId(value)
-  );
-}
-
-function extractContentText(content: unknown, seen: Set<object>): string {
-  if (typeof content === "string") {
-    return content;
-  }
-
-  if (Array.isArray(content)) {
-    return content
-      .map((block) => extractContentBlockText(block, seen))
-      .join("");
-  }
-
-  if (isRecord(content)) {
-    return extractContentBlockText(content, seen);
-  }
-
-  return "";
-}
-
-function extractContentDeltaText(delta: unknown, seen: Set<object>): string {
-  if (typeof delta === "string") {
-    return delta;
-  }
-
-  if (!isRecord(delta)) {
-    return "";
-  }
-
-  const type = getStringRecordValue(delta, "type");
-
-  if (type === "text-delta") {
-    return typeof delta.text === "string" ? delta.text : "";
-  }
-
-  if (type === "block-delta") {
-    return extractContentBlockText(delta.fields, seen);
-  }
-
-  if (typeof delta.text === "string") {
-    return delta.text;
-  }
-
-  if (typeof delta.delta === "string") {
-    return delta.delta;
-  }
-
-  return "";
-}
-
-function extractContentBlockText(block: unknown, seen: Set<object>): string {
-  if (typeof block === "string") {
-    return block;
-  }
-
-  if (!isRecord(block)) {
-    return "";
-  }
-
-  const type = getStringRecordValue(block, "type");
-
-  if (
-    type?.includes("tool") ||
-    type?.includes("reasoning") ||
-    type?.includes("file") ||
-    type?.includes("image")
-  ) {
-    return "";
-  }
-
-  for (const key of ["text", "content", "output_text"]) {
-    const text = block[key];
-
-    if (typeof text === "string") {
-      return text;
-    }
-  }
-
-  if (isRecord(block.fields)) {
-    return extractContentBlockText(block.fields, seen);
-  }
-
-  if (isRecord(block.delta)) {
-    return extractContentDeltaText(block.delta, seen);
-  }
-
-  return "";
-}
-
-function shouldReadMessageRecord(value: Record<string, unknown>): boolean {
-  const role = getMessageRole(value);
-
-  return role === null || role === "ai" || role === "assistant";
-}
-
-function getMessageRole(value: Record<string, unknown>): string | null {
-  for (const key of ["role", "type"]) {
-    const role = getStringRecordValue(value, key);
-
-    if (isMessageRole(role)) {
-      return role;
-    }
-  }
-
-  const serializedType = getSerializedMessageType(value);
-
-  if (serializedType === "AIMessage" || serializedType === "AIMessageChunk") {
-    return "ai";
-  }
-
-  if (
-    serializedType === "HumanMessage" ||
-    serializedType === "SystemMessage" ||
-    serializedType === "ToolMessage"
-  ) {
-    return serializedType.replace("Message", "").toLowerCase();
-  }
-
-  const getType = value._getType;
-
-  if (typeof getType !== "function") {
-    return null;
-  }
-
-  try {
-    const role: unknown = getType.call(value);
-
-    return isMessageRole(role) ? role : null;
-  } catch {
-    return null;
-  }
-}
-
-function hasSerializedMessageId(value: Record<string, unknown>): boolean {
-  return getSerializedMessageType(value) !== null;
-}
-
-function getSerializedMessageType(
-  value: Record<string, unknown>,
-): string | null {
-  if (!Array.isArray(value.id)) {
-    return null;
-  }
-
-  return (
-    value.id
-      .filter((part): part is string => typeof part === "string")
-      .at(-1) ?? null
-  );
-}
-
-function isMessageRole(value: unknown): value is string {
-  return (
-    value === "ai" ||
-    value === "assistant" ||
-    value === "human" ||
-    value === "system" ||
-    value === "tool"
-  );
-}
-
-function parseToolStreamEvent(payload: unknown): OpenWikiRunEvent | null {
-  if (!isRecord(payload)) {
-    return null;
-  }
-
-  const event = getStringRecordValue(payload, "event");
-  const name = getStringRecordValue(payload, "name") ?? "tool";
-  const id = getStringRecordValue(payload, "toolCallId") ?? name;
-
-  if (event === "on_tool_start") {
-    return {
-      type: "tool_start",
-      call: sanitizeDiagnosticText(
-        `${formatToolCallName(name)}(${formatToolArgs(payload.input)})`,
-      ),
-      id,
-      input: payload.input,
-      name,
-    };
-  }
-
-  if (event === "on_tool_end" || event === "on_tool_error") {
-    return {
-      type: "tool_end",
-      id,
-      name,
-      status: event === "on_tool_error" ? "error" : "finished",
-    };
-  }
-
-  return null;
-}
-
-const MODEL_REQUEST_NAMESPACE_PREFIX = "model_request:";
-
-/**
- * Classifies a stream namespace. DeepAgents wraps the primary model call in a
- * single model_request namespace, while deeper namespaces still represent
- * subgraphs whose prose should stay hidden from the main transcript.
- */
-function getStreamSource(namespace: unknown): "main" | "subgraph" {
-  if (
-    Array.isArray(namespace) &&
-    namespace.length === 1 &&
-    typeof namespace[0] === "string" &&
-    namespace[0].startsWith(MODEL_REQUEST_NAMESPACE_PREFIX)
-  ) {
-    return "main";
-  }
-
-  return Array.isArray(namespace) && namespace.length > 0 ? "subgraph" : "main";
-}
-
-function formatToolCallName(name: string): string {
-  return name === "execute" ? "Execute" : name;
-}
-
-function formatToolArgs(input: unknown): string {
-  const value = parseStringifiedJson(input);
-
-  // Checked ahead of isRecord: arrays are `typeof "object"` and non-null, so
-  // the record branch would otherwise claim them and render `0=…, 1=…`.
-  if (Array.isArray(value)) {
-    return value.map(formatToolValue).join(", ");
-  }
-
-  if (isRecord(value)) {
-    return Object.entries(value)
-      .map(([key, argValue]) => `${key}=${formatToolValue(argValue)}`)
-      .join(", ");
-  }
-
-  if (value === undefined || value === null) {
-    return "";
-  }
-
-  return formatToolValue(value);
-}
-
-function formatToolValue(value: unknown): string {
-  return JSON.stringify(value) ?? String(value);
-}
-
-function parseStringifiedJson(value: unknown): unknown {
-  if (typeof value !== "string") {
-    return value;
-  }
-
-  try {
-    return JSON.parse(value);
-  } catch {
-    return value;
-  }
-}
-
-function getStringRecordValue(
-  value: Record<string, unknown>,
-  key: string,
-): string | null {
-  return typeof value[key] === "string" ? value[key] : null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function describeStreamChunkShape(chunk: unknown): string {
-  if (Array.isArray(chunk)) {
-    return `array(length=${chunk.length}, items=${chunk
-      .slice(0, 3)
-      .map(describeValueShape)
-      .join(",")})`;
-  }
-
-  return describeValueShape(chunk);
-}
-
-function describeValueShape(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `array(length=${value.length})`;
-  }
-
-  if (isRecord(value)) {
-    const keys = Object.keys(value);
-    const suffix = keys.length > 8 ? ",..." : "";
-
-    return `object(keys=${keys.slice(0, 8).join(",")}${suffix})`;
-  }
-
-  return typeof value;
-}
-
 type OpenRouterFetchCapture = {
   clearLastFailure: () => void;
   getLastFailure: () => OpenRouterFetchFailure | null;
@@ -2178,7 +985,7 @@ const OPENROUTER_DEBUG_BODY_LIMIT = 4_000;
  * Per-run sink for the most recent OpenRouter HTTP failure. Each run registers
  * its own so concurrent runs don't share (or clobber) each other's captured
  * failure. `ChatOpenRouter` (unlike the OpenAI/Codex/Vertex clients) extends
- * `BaseChatModel` and calls `globalThis.fetch` directly with no injectable
+ * the previous provider model and calls `globalThis.fetch` directly with no injectable
  * fetch, so a global wrapper is the only interception point — hence the
  * reference-counted installer below rather than a per-model `configuration.fetch`.
  */
@@ -2193,6 +1000,16 @@ const activeOpenRouterSinks = new Set<OpenRouterFetchSink>();
 let openRouterOriginalFetch: typeof fetch | null = null;
 const OPENROUTER_PROVIDER_ERROR_RETRY_BASE_DELAY_MS = 1_000;
 const OPENROUTER_PROVIDER_ERROR_RETRY_MAX_DELAY_MS = 30_000;
+
+function resolveAnthropicMaxOutputTokens(
+  modelId: string,
+  configuredMaxOutputTokens: number | undefined,
+): number | undefined {
+  if (configuredMaxOutputTokens !== undefined) return configuredMaxOutputTokens;
+  return /^claude-(?:haiku|sonnet|opus)-(?:4|5)(?:[-.@]|$)/u.test(modelId)
+    ? DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS
+    : undefined;
+}
 
 function openRouterDebugFetch(
   input: Parameters<typeof fetch>[0],
@@ -2739,7 +1556,6 @@ export function formatEnvironmentDebugValue(
   }
 
   if (
-    key === "LANGCHAIN_ENDPOINT" ||
     key === ANTHROPIC_BASE_URL_ENV_KEY ||
     key === BASETEN_BASE_URL_ENV_KEY ||
     key === COPILOT_BASE_URL_ENV_KEY ||

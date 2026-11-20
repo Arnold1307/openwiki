@@ -306,9 +306,8 @@ export async function runPrintCommand(
           });
         }
 
-        // Code-mode connectors (e.g. langsmith) pull their evidence and augment
-        // the agent message before the run, so --print behaves exactly like
-        // interactive.
+        // Code-mode connectors pull their evidence and augment the agent message
+        // before the run, so --print behaves exactly like interactive.
         const userMessage =
           command.mode === "code" && command.command !== "chat"
             ? await runCodeModeConnectors(

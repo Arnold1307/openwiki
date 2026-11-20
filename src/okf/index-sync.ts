@@ -1,4 +1,4 @@
-import type { BackendProtocolV2, FileInfo } from "deepagents";
+import type { FileInfo, OpenWikiBackend } from "../agent/backend-types.js";
 import path from "node:path";
 import type { OpenWikiOutputMode } from "../agent/types.js";
 import {
@@ -78,7 +78,7 @@ export interface WikiFrontmatterReport {
  * Synchronizes the index for every directory in the configured wiki.
  */
 export async function synchronizeWikiIndexes(
-  backend: BackendProtocolV2,
+  backend: OpenWikiBackend,
   outputMode: OpenWikiOutputMode,
   labels: IndexLabels = ENGLISH_INDEX_LABELS,
   conceptType: string = ENGLISH_CONCEPT_TYPE,
@@ -111,7 +111,7 @@ export async function synchronizeWikiIndexes(
  * enrich flagged pages in the same run.
  */
 export async function migrateWikiToOkf(
-  backend: BackendProtocolV2,
+  backend: OpenWikiBackend,
   outputMode: OpenWikiOutputMode,
   conceptType: string = ENGLISH_CONCEPT_TYPE,
 ): Promise<void> {
@@ -128,7 +128,7 @@ export async function migrateWikiToOkf(
  * @returns Stable, sorted virtual paths for every concept page.
  */
 export async function listWikiConceptPaths(
-  backend: BackendProtocolV2,
+  backend: OpenWikiBackend,
   outputMode: OpenWikiOutputMode,
 ): Promise<string[]> {
   const root = outputMode === "local-wiki" ? "/" : "/openwiki";
@@ -157,7 +157,7 @@ export async function listWikiConceptPaths(
  * its index metadata without a second read.
  */
 async function normalizeConceptFile(
-  backend: BackendProtocolV2,
+  backend: OpenWikiBackend,
   filePath: string,
   conceptType: string = ENGLISH_CONCEPT_TYPE,
 ): Promise<string> {
@@ -176,7 +176,7 @@ async function normalizeConceptFile(
  * Recursively collects visible wiki directories and their entries.
  */
 async function collectDirectories(
-  backend: BackendProtocolV2,
+  backend: OpenWikiBackend,
   directoryPath: string,
   allowMissing = false,
 ): Promise<Directory[]> {
@@ -205,7 +205,7 @@ async function collectDirectories(
  * Builds and writes one directory's index when its content has changed.
  */
 async function synchronizeDirectory(
-  backend: BackendProtocolV2,
+  backend: OpenWikiBackend,
   directory: Directory,
   root: string,
   labels: IndexLabels,
@@ -337,7 +337,7 @@ function usableString(value: unknown): string | undefined {
  * Reads a text file from the backend or throws an actionable error.
  */
 async function readText(
-  backend: BackendProtocolV2,
+  backend: OpenWikiBackend,
   filePath: string,
 ): Promise<string> {
   const result = await backend.readRaw(filePath);
@@ -350,7 +350,7 @@ async function readText(
  * Converts supported backend file content into text.
  */
 function fileDataToText(
-  content: string | string[] | Uint8Array | undefined,
+  content: string | string[] | Uint8Array | null | undefined,
   filePath: string,
 ): string {
   if (Array.isArray(content)) return content.join("\n");

@@ -41,7 +41,6 @@ export function buildCredentialEnvUpdates(
     nextEntraScope = null,
     nextGcpLocation,
     nextGcpProject,
-    nextLangSmithKey,
     nextModelId,
     nextReasoningEffort = null,
     nextOAuthTokens,
@@ -121,20 +120,6 @@ export function buildCredentialEnvUpdates(
 
   if (nextReasoningEffort !== null) {
     updates[OPENWIKI_REASONING_EFFORT_ENV_KEY] = nextReasoningEffort;
-  }
-
-  if (nextLangSmithKey !== null) {
-    updates.LANGSMITH_API_KEY = nextLangSmithKey;
-
-    if (nextLangSmithKey.length > 0) {
-      updates.LANGCHAIN_PROJECT = "openwiki";
-      updates.LANGCHAIN_TRACING_V2 = "true";
-    } else {
-      // Blank input must act as an off switch: without this, a
-      // LANGCHAIN_TRACING_V2=true saved by an earlier setup stays in
-      // ~/.openwiki/.env and tracing silently remains enabled.
-      updates.LANGCHAIN_TRACING_V2 = "false";
-    }
   }
 
   return updates;

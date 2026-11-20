@@ -1,7 +1,7 @@
 import { getTranslations } from "./i18n.js";
 
 /**
- * The branded single-page visualizer app (LangChain design system), rendered for
+ * The branded single-page visualizer app, rendered for
  * either the local server or a static export. Scalar wiki fields (title, type,
  * tags) are HTML-escaped client-side before innerHTML; Markdown bodies are
  * additionally protected by CSP and DOMPurify. Browser libraries load from

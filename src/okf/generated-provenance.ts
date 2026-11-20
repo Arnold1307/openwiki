@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { BackendProtocolV2 } from "deepagents";
+import type { OpenWikiBackend } from "../agent/backend-types.js";
 import type { OpenWikiOutputMode } from "../agent/types.js";
 import {
   parseFrontmatterFields,
@@ -134,7 +134,7 @@ export function deserializeGeneratedProvenance(
  * @returns Pre-run concept state keyed by virtual page path.
  */
 export async function snapshotGeneratedProvenance(
-  backend: BackendProtocolV2,
+  backend: OpenWikiBackend,
   outputMode: OpenWikiOutputMode,
 ): Promise<GeneratedProvenanceSnapshot> {
   const snapshots = new Map<string, ConceptSnapshot>();
@@ -162,7 +162,7 @@ export async function snapshotGeneratedProvenance(
  * @param producerActorsByPage - Page-specific producer overrides.
  */
 export async function finalizeGeneratedProvenance(
-  backend: BackendProtocolV2,
+  backend: OpenWikiBackend,
   outputMode: OpenWikiOutputMode,
   initialConcepts: GeneratedProvenanceSnapshot,
   now: string,
@@ -239,12 +239,12 @@ function canonicalizeChangedConcept(content: string): string {
  * @returns Complete persisted concept content.
  */
 async function readRequiredContent(
-  backend: BackendProtocolV2,
+  backend: OpenWikiBackend,
   filePath: string,
 ): Promise<string> {
   const read = await backend.readRaw(filePath);
   const content = read.data?.content;
-  if (read.error || content === undefined || content instanceof Uint8Array) {
+  if (read.error || content === undefined || content === null || content instanceof Uint8Array) {
     throw new Error(
       `Unable to read concept ${filePath}: ${read.error ?? "not text"}`,
     );

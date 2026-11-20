@@ -175,45 +175,41 @@ export const MANAGED_ENV_KEYS = [
   OPENWIKI_TAVILY_API_KEY_ENV_KEY,
   "OPENWIKI_HTTPS_OAUTH_REDIRECT_URI",
   "OPENWIKI_OAUTH_CALLBACK_PORT",
-  "LANGSMITH_API_KEY",
-  "LANGCHAIN_PROJECT",
-  "LANGCHAIN_TRACING_V2",
 ] as const;
-
-// LangChain project/tracing settings are managed but are not credentials, so
-// they are excluded from the diagnostics panel.
-const NON_CREDENTIAL_ENV_KEYS = new Set<string>([
-  "LANGCHAIN_PROJECT",
-  "LANGCHAIN_TRACING_V2",
-]);
 
 /**
  * Managed keys surfaced (in display order) in the credential diagnostics panel:
- * the provider/model settings and every credential, but not the LangChain
- * project/tracing settings. Derived from {@link MANAGED_ENV_KEYS} so a new
+ * the provider/model settings and every credential. Derived from
+ * {@link MANAGED_ENV_KEYS} so a new
  * credential key automatically appears in diagnostics.
  */
 export const CREDENTIAL_DIAGNOSTIC_ENV_KEYS: readonly string[] = [
   OPENWIKI_PROVIDER_ENV_KEY,
   ...MANAGED_ENV_KEYS.filter(
     (key) =>
-      key !== OPENWIKI_PROVIDER_ENV_KEY && !NON_CREDENTIAL_ENV_KEYS.has(key),
+      key !== OPENWIKI_PROVIDER_ENV_KEY,
   ),
 ];
 
 /**
- * Keys dumped in the agent's environment debug line: every managed key plus the
- * LangChain endpoint override that OpenWiki reads but never persists. Derived
- * from {@link MANAGED_ENV_KEYS} so it cannot drift.
+ * Keys dumped in the agent's environment debug line. Derived from
+ * {@link MANAGED_ENV_KEYS} so it cannot drift.
  */
 export const DEBUG_ENV_KEYS: readonly string[] = [
   ...MANAGED_ENV_KEYS,
-  "LANGCHAIN_ENDPOINT",
 ];
 
 const managedEnvKeys: readonly string[] = MANAGED_ENV_KEYS;
 
-const deprecatedEnvKeys = ["OPENAI_ORG_ID", "OPENAI_PROJECT"];
+const deprecatedEnvKeys = [
+  "OPENAI_ORG_ID",
+  "OPENAI_PROJECT",
+  "LANGSMITH_API_KEY",
+  "OPENWIKI_LANGSMITH_API_KEY",
+  "LANGCHAIN_PROJECT",
+  "LANGCHAIN_TRACING_V2",
+  "LANGCHAIN_ENDPOINT",
+];
 const booleanDiagnosticValues = new Set(["true", "false"]);
 const invalidBooleanWarning = "invalid boolean";
 
@@ -341,8 +337,7 @@ async function saveOpenWikiEnvLocked(updates: EnvMap): Promise<void> {
     delete nextEnv[key];
   }
 
-  // An empty value means "not set" (e.g. skipping the optional LangSmith key),
-  // so drop the key rather than persisting KEY="" which would later read back
+  // An empty value means "not set", so drop the key rather than persisting KEY="" which would later read back
   // as configured. Also self-heals any empty values left by earlier writes.
   for (const key of Object.keys(nextEnv)) {
     if (nextEnv[key] === "") {

@@ -35,11 +35,6 @@ import {
   loginWithChatGPT,
 } from "../../agent/openai-chatgpt-oauth.js";
 import type { OpenWikiRunMode } from "../../cli/commands.js";
-import {
-  loadLangSmithSetup,
-  nextLangSmithApiKeyEnv,
-  saveLangSmithSetup,
-} from "../../connectors/sources/langsmith/setup.js";
 import type { ConnectorId } from "../../connectors/types.js";
 import {
   detectExternalCliCredential,
@@ -76,7 +71,6 @@ import {
   getErrorMessage,
   getInitialStep,
   getInputDisplayWidth,
-  getLangsmithRegionSelectionIndex,
   getModelSelectionIndex,
   getModelSelectionOptions,
   getReasoningEffortSelectionIndex,
@@ -102,7 +96,6 @@ import {
   isSecretKeyConfigured,
   moveSelectionIndex,
   needsEnvValue,
-  needsLangSmithStep,
   nextSetupStep,
   normalizeLocalPath,
   sanitizeInputChunk,
@@ -119,7 +112,6 @@ import {
   CODE_REPO_OPTIONS,
   CRON_MODE_OPTIONS,
   FINAL_OPTIONS,
-  LANGSMITH_REGION_OPTIONS,
   ONBOARDING_TEMPLATES,
   OPENAI_COMPATIBLE_AUTH_OPTIONS,
   POWER_MODE_OPTIONS,
@@ -129,7 +121,6 @@ import {
 import type {
   CompleteSetupOptions,
   InitSetupProps,
-  LangsmithWorkspaceDraft,
   PromptInputKey,
   PromptStep,
   ReasoningEffortSelection,
@@ -161,10 +152,6 @@ export function useInitSetup({
   // Guards the mount effect so the initial step is seeded once per mount, not
   // re-seeded when the effect re-fires on parent re-renders.
   const didInitializeRef = useRef(false);
-  // Seed the LangSmith selection from the committed config only once, so
-  // navigating back and re-confirming the repo does not clobber in-progress edits
-  // (the file is not written until setup completes).
-  const langsmithPreloadedRef = useRef(false);
   /**
    * Advance to a step, recording the current step on the back-navigation
    * history unless this is a back move. A ref-backed stack so Esc can retrace
@@ -194,28 +181,6 @@ export function useInitSetup({
   const [modelId, setModelId] = useState<string | null>(null);
   const [reasoningEffort, setReasoningEffort] =
     useState<ReasoningEffortSelection | null>(null);
-  const [langSmithKey, setLangSmithKey] = useState<string | null>(null);
-  // LangSmith workspaces as the wizard edits them (region + key + projects),
-  // seeded from the committed config; committed on completion.
-  const [langsmithWorkspaces, setLangsmithWorkspaces] = useState<
-    LangsmithWorkspaceDraft[]
-  >([]);
-  // The workspace currently being added or edited, folded into langsmithWorkspaces
-  // when its projects step is confirmed.
-  const [langsmithDraft, setLangsmithDraft] =
-    useState<LangsmithWorkspaceDraft | null>(null);
-  // Index of the workspace being edited; === langsmithWorkspaces.length for a new
-  // one.
-  const [langsmithEditingIndex, setLangsmithEditingIndex] = useState(0);
-  const [
-    langsmithWorkspaceSelectionIndex,
-    setLangsmithWorkspaceSelectionIndex,
-  ] = useState(0);
-  const [langsmithRegionSelectionIndex, setLangsmithRegionSelectionIndex] =
-    useState(0);
-  // True once the LangSmith workspaces were opened this run; guards the WYSIWYG
-  // write so an untouched setup never rewrites openwiki/.langsmith.json.
-  const [langsmithSourcesTouched, setLangsmithSourcesTouched] = useState(false);
   // True once the user confirms a provider this session. Provider always holds a
   // default value, so a null-check cannot detect the in-session choice.
   const [providerConfirmed, setProviderConfirmed] = useState(false);
@@ -353,7 +318,6 @@ export function useInitSetup({
             savedBaseUrl: false,
             savedGcpLocation: false,
             savedGcpProject: false,
-            savedLangSmithKey: false,
             savedModelId: false,
             savedProvider: false,
             savedRegion: false,
@@ -477,7 +441,6 @@ export function useInitSetup({
           nextRegion: region,
           nextGcpLocation: gcpLocation,
           nextGcpProject: gcpProject,
-          nextLangSmithKey: langSmithKey,
           nextModelId: modelId,
           nextOAuthTokens: tokens,
           nextProvider: provider,
@@ -578,24 +541,6 @@ export function useInitSetup({
       case "run-mode":
         setRunModeSelectionIndex(getRunModeSelectionIndex(selectedMode));
         break;
-      case "source-langsmith-region":
-        setLangsmithRegionSelectionIndex(
-          getLangsmithRegionSelectionIndex(langsmithDraft?.region ?? "us"),
-        );
-        break;
-      case "source-langsmith-key":
-        // Prefill an edited workspace's key from ~/.openwiki/.env so it can be
-        // kept or replaced; a new workspace starts empty.
-        setInput(
-          langsmithDraft?.apiKey ||
-            (langsmithDraft
-              ? (getSavedEnvValue(langsmithDraft.apiKeyEnv) ?? "")
-              : ""),
-        );
-        break;
-      case "source-langsmith-projects":
-        setInput((langsmithDraft?.projects ?? []).join(", "));
-        break;
       case "model": {
         // Point the cursor at the saved model (or the --modelId override), not
         // the provider default, so it matches the checklist on a re-walk.
@@ -683,12 +628,6 @@ export function useInitSetup({
         );
         break;
       }
-      case "langsmith":
-        // Prefill from state or the saved config (masked as dots), matching the
-        // api-key/secret-key steps, so a walk-through Enter keeps the existing
-        // key instead of submitting empty and clearing it.
-        setInput(langSmithKey ?? getSavedEnvValue("LANGSMITH_API_KEY") ?? "");
-        break;
       case "template":
         setTemplateSelectionIndex(
           Math.max(
@@ -777,33 +716,6 @@ export function useInitSetup({
         break;
       case "gcp-location":
         if (trimmed) setGcpLocation(trimmed);
-        break;
-      case "langsmith":
-        setLangSmithKey(trimmed);
-        break;
-      case "source-langsmith-key":
-        // Keep an unsubmitted key edit on the draft so Esc does not lose it.
-        setLangsmithDraft((draft) =>
-          draft ? { ...draft, apiKey: trimmed } : draft,
-        );
-        break;
-      case "source-langsmith-projects":
-        // Keep an unsubmitted list edit on the draft so Esc does not lose it.
-        setLangsmithDraft((draft) =>
-          draft
-            ? {
-                ...draft,
-                projects: [
-                  ...new Set(
-                    input
-                      .split(",")
-                      .map((name) => name.trim())
-                      .filter((name) => name.length > 0),
-                  ),
-                ],
-              }
-            : draft,
-        );
         break;
       case "wiki-goal":
         // Keep an unsubmitted goal edit in-session (not yet persisted) so
@@ -956,33 +868,6 @@ export function useInitSetup({
             index,
             key.upArrow ? -1 : 1,
             RUN_MODE_OPTIONS.length,
-          ),
-        ),
-      );
-      return;
-    }
-
-    if (step === "source-langsmith-workspaces") {
-      handleMenuInput(key, () =>
-        setLangsmithWorkspaceSelectionIndex((index) =>
-          moveSelectionIndex(
-            index,
-            key.upArrow ? -1 : 1,
-            // workspaces + "Add a workspace" + "Done".
-            langsmithWorkspaces.length + 2,
-          ),
-        ),
-      );
-      return;
-    }
-
-    if (step === "source-langsmith-region") {
-      handleMenuInput(key, () =>
-        setLangsmithRegionSelectionIndex((index) =>
-          moveSelectionIndex(
-            index,
-            key.upArrow ? -1 : 1,
-            LANGSMITH_REGION_OPTIONS.length,
           ),
         ),
       );
@@ -1212,7 +1097,6 @@ export function useInitSetup({
         nextRegion: region,
         nextGcpLocation: gcpLocation,
         nextGcpProject: gcpProject,
-        nextLangSmithKey: langSmithKey,
         nextModelId: modelId,
         nextOAuthTokens: oauthTokens,
         nextProvider: provider,
@@ -1332,7 +1216,6 @@ export function useInitSetup({
         nextRegion: region,
         nextGcpLocation: gcpLocation,
         nextGcpProject: gcpProject,
-        nextLangSmithKey: langSmithKey,
         nextModelId: modelId,
         nextOAuthTokens: oauthTokens,
         nextProvider: selectedProvider,
@@ -1422,7 +1305,6 @@ export function useInitSetup({
         nextRegion: region,
         nextGcpLocation: gcpLocation,
         nextGcpProject: gcpProject,
-        nextLangSmithKey: langSmithKey,
         nextModelId: modelId,
         nextOAuthTokens: oauthTokens,
         nextProvider: provider,
@@ -1479,7 +1361,6 @@ export function useInitSetup({
         nextRegion: region,
         nextGcpLocation: gcpLocation,
         nextGcpProject: gcpProject,
-        nextLangSmithKey: langSmithKey,
         nextModelId: modelId,
         nextOAuthTokens: oauthTokens,
         nextProvider: provider,
@@ -1544,7 +1425,6 @@ export function useInitSetup({
         nextRegion,
         nextGcpLocation: gcpLocation,
         nextGcpProject: gcpProject,
-        nextLangSmithKey: langSmithKey,
         nextModelId: modelId,
         nextOAuthTokens: oauthTokens,
         nextProvider: provider,
@@ -1623,7 +1503,6 @@ export function useInitSetup({
         nextRegion: region,
         nextGcpLocation,
         nextGcpProject: gcpProject,
-        nextLangSmithKey: langSmithKey,
         nextModelId: modelId,
         nextOAuthTokens: oauthTokens,
         nextProvider: provider,
@@ -1696,7 +1575,6 @@ export function useInitSetup({
         nextRegion: region,
         nextGcpLocation: gcpLocation,
         nextGcpProject: gcpProject,
-        nextLangSmithKey: langSmithKey,
         nextModelId: modelId,
         nextOAuthTokens: oauthTokens,
         nextProvider: provider,
@@ -1787,29 +1665,6 @@ export function useInitSetup({
 
       setReasoningEffort(selectedEffort);
       await continueAfterModel(selectedModelId, selectedEffort);
-      return;
-    }
-
-    if (step === "langsmith") {
-      const nextLangSmithKey = input.trim();
-
-      setLangSmithKey(nextLangSmithKey);
-      setInput("");
-
-      await continueAfterCredentials({
-        nextApiKey: apiKey,
-        nextBaseUrl: baseUrl,
-        nextSecretKey: secretKey,
-        nextRegion: region,
-        nextGcpLocation: gcpLocation,
-        nextGcpProject: gcpProject,
-        nextLangSmithKey,
-        nextModelId: modelId,
-        nextReasoningEffort: reasoningEffort,
-        nextOAuthTokens: oauthTokens,
-        nextProvider: provider,
-        runMode: selectedMode,
-      });
       return;
     }
 
@@ -1982,81 +1837,6 @@ export function useInitSetup({
       return;
     }
 
-    if (step === "source-langsmith-workspaces") {
-      const workspaceCount = langsmithWorkspaces.length;
-      if (langsmithWorkspaceSelectionIndex < workspaceCount) {
-        // Edit an existing workspace: load it into the draft and walk the fields.
-        const existing = langsmithWorkspaces[langsmithWorkspaceSelectionIndex];
-        setLangsmithEditingIndex(langsmithWorkspaceSelectionIndex);
-        setLangsmithDraft({ ...existing });
-        setLangsmithRegionSelectionIndex(
-          getLangsmithRegionSelectionIndex(existing.region),
-        );
-        setStep("source-langsmith-region");
-        return;
-      }
-      if (langsmithWorkspaceSelectionIndex === workspaceCount) {
-        // Add a workspace with a fresh key env var name.
-        setLangsmithEditingIndex(workspaceCount);
-        setLangsmithDraft({
-          apiKey: "",
-          apiKeyEnv: nextLangSmithApiKeyEnv(
-            langsmithWorkspaces.map((workspace) => workspace.apiKeyEnv),
-          ),
-          projects: [],
-          region: "us",
-        });
-        setLangsmithRegionSelectionIndex(
-          getLangsmithRegionSelectionIndex("us"),
-        );
-        setStep("source-langsmith-region");
-        return;
-      }
-      // Done.
-      returnToSourceMenu();
-      return;
-    }
-
-    if (step === "source-langsmith-region") {
-      const selectedOption =
-        LANGSMITH_REGION_OPTIONS[langsmithRegionSelectionIndex] ??
-        LANGSMITH_REGION_OPTIONS[0];
-      setLangsmithDraft((draft) =>
-        draft ? { ...draft, region: selectedOption.id } : draft,
-      );
-      seedInputForStep("source-langsmith-key");
-      setStep("source-langsmith-key");
-      return;
-    }
-
-    if (step === "source-langsmith-key") {
-      const nextKey = input.trim();
-      setLangsmithDraft((draft) =>
-        draft ? { ...draft, apiKey: nextKey } : draft,
-      );
-      // setLangsmithDraft has not applied yet this tick, so seed the projects
-      // field from the current draft rather than via seedInputForStep.
-      setInput((langsmithDraft?.projects ?? []).join(", "));
-      setStep("source-langsmith-projects");
-      return;
-    }
-
-    if (step === "source-langsmith-projects") {
-      // Commit the workspace with its exact project set; nothing is written here,
-      // the file + keys are committed at the final step.
-      const names = [
-        ...new Set(
-          input
-            .split(",")
-            .map((name) => name.trim())
-            .filter((name) => name.length > 0),
-        ),
-      ];
-      commitLangsmithWorkspace(names);
-      returnToWorkspacesMenu();
-      return;
-    }
-
     if (step === "source-description") {
       if (sourceDescriptionSelectionIndex >= selectedSource.examples.length) {
         setInput("");
@@ -2131,35 +1911,6 @@ export function useInitSetup({
     }
 
     if (step === "final") {
-      // Commit the LangSmith workspaces as the exact set (WYSIWYG add/edit/remove),
-      // only when the sub-menu was opened — so an aborted or untouched setup never
-      // rewrites openwiki/.langsmith.json.
-      if (selectedMode === "code" && langsmithSourcesTouched) {
-        try {
-          // Freshly-entered keys go to ~/.openwiki/.env (never committed); an empty
-          // apiKey keeps the existing saved key.
-          const keyUpdates: Record<string, string> = {};
-          for (const workspace of langsmithWorkspaces) {
-            if (workspace.apiKey.length > 0) {
-              keyUpdates[workspace.apiKeyEnv] = workspace.apiKey;
-            }
-          }
-          if (Object.keys(keyUpdates).length > 0) {
-            await saveOpenWikiEnv(keyUpdates);
-          }
-          await saveLangSmithSetup(
-            codeRepoRoot,
-            langsmithWorkspaces.map((workspace) => ({
-              apiKeyEnv: workspace.apiKeyEnv,
-              projects: workspace.projects,
-              region: workspace.region,
-            })),
-          );
-        } catch (writeError) {
-          setError(getErrorMessage(writeError));
-          return;
-        }
-      }
       const runIngestionNow =
         FINAL_OPTIONS[finalSelectionIndex] === "Run ingestion now";
       const nextConfig = {
@@ -2185,7 +1936,6 @@ export function useInitSetup({
         savedBaseUrl: baseUrl !== null,
         savedGcpLocation: gcpLocation !== null,
         savedGcpProject: gcpProject !== null,
-        savedLangSmithKey: langSmithKey !== null && langSmithKey.length > 0,
         savedModelId: modelId !== null,
         savedProvider: process.env[OPENWIKI_PROVIDER_ENV_KEY] !== provider,
         savedRegion: region !== null,
@@ -2234,16 +1984,6 @@ export function useInitSetup({
     nextModelId: string,
     nextReasoningEffort: ReasoningEffortSelection,
   ): Promise<void> {
-    // LangSmith is the next spine step, but it is optional: once the user has
-    // recorded a tracing decision (LANGCHAIN_TRACING_V2 set, or a key present)
-    // do not re-prompt on a later setup pass. An explicit --init re-walk
-    // (walkAllSteps) still visits it so the whole setup can be reconfigured.
-    if (walkAllSteps || needsLangSmithStep()) {
-      seedInputForStep("langsmith");
-      setStep("langsmith");
-      return;
-    }
-
     await continueAfterCredentials({
       nextApiKey: apiKey,
       nextBaseUrl: baseUrl,
@@ -2251,7 +1991,6 @@ export function useInitSetup({
       nextRegion: region,
       nextGcpLocation: gcpLocation,
       nextGcpProject: gcpProject,
-      nextLangSmithKey: langSmithKey,
       nextModelId,
       nextReasoningEffort,
       nextOAuthTokens: oauthTokens,
@@ -2319,25 +2058,6 @@ export function useInitSetup({
 
   function continueAfterCodeRepoConfirmed(repoRoot: string) {
     setCodeRepoRoot(repoRoot);
-    // Preload committed LangSmith projects (once) so the source menu shows them
-    // and edits build on them (fail-open on the read).
-    if (!langsmithPreloadedRef.current) {
-      langsmithPreloadedRef.current = true;
-      void loadLangSmithSetup(repoRoot)
-        .then((existing) =>
-          setLangsmithWorkspaces(
-            existing.map((workspace) => ({
-              apiKey: "",
-              apiKeyEnv: workspace.apiKeyEnv,
-              projects: workspace.projects,
-              region: workspace.region,
-            })),
-          ),
-        )
-        .catch(() => {});
-    }
-    // Code mode auto-configures the repo itself; the source menu then offers the
-    // optional LangSmith trace sources before the wiki brief.
     setSourceSelectionIndex(0);
     setSourceState({ secretValues: {} });
     setStep("source-menu");
@@ -2383,9 +2103,6 @@ export function useInitSetup({
       savedSecretKey: options.nextSecretKey !== null,
       savedGcpLocation: options.nextGcpLocation !== null,
       savedGcpProject: options.nextGcpProject !== null,
-      savedLangSmithKey:
-        options.nextLangSmithKey !== null &&
-        options.nextLangSmithKey.length > 0,
       savedModelId: options.nextModelId !== null,
       savedProvider:
         process.env[OPENWIKI_PROVIDER_ENV_KEY] !== options.nextProvider,
@@ -2472,15 +2189,6 @@ export function useInitSetup({
       return;
     }
 
-    if (source.id === "langsmith") {
-      // Open the workspace sub-menu (add/edit/remove). Opening it arms the
-      // WYSIWYG write on completion.
-      setLangsmithSourcesTouched(true);
-      setLangsmithWorkspaceSelectionIndex(0);
-      setStep("source-langsmith-workspaces");
-      return;
-    }
-
     try {
       if (source.id === "git-repo") {
         setInput(getDefaultLocalGitRepoPath());
@@ -2497,48 +2205,6 @@ export function useInitSetup({
     } catch (setupError) {
       setError(getErrorMessage(setupError));
     }
-  }
-
-  /**
-   * Folds the in-progress draft into langsmithWorkspaces at the editing index. An
-   * empty project list removes the workspace (WYSIWYG).
-   */
-  function commitLangsmithWorkspace(names: string[]): void {
-    const draft = langsmithDraft;
-    setLangsmithWorkspaces((list) => {
-      const next = [...list];
-      if (names.length === 0) {
-        if (langsmithEditingIndex < next.length) {
-          next.splice(langsmithEditingIndex, 1);
-        }
-        return next;
-      }
-      if (!draft) {
-        return next;
-      }
-      const workspace = { ...draft, projects: names };
-      if (langsmithEditingIndex >= next.length) {
-        next.push(workspace);
-      } else {
-        next[langsmithEditingIndex] = workspace;
-      }
-      return next;
-    });
-  }
-
-  /**
-   * Returns to the workspace sub-menu as a back-navigation: unwind history through
-   * it so Esc from the refreshed sub-menu goes to the source menu, not back down
-   * into the edited workspace's field steps.
-   */
-  function returnToWorkspacesMenu() {
-    setInput("");
-    setLangsmithDraft(null);
-    const index = navHistory.current.lastIndexOf("source-langsmith-workspaces");
-    if (index >= 0) {
-      navHistory.current.length = index;
-    }
-    setStep("source-langsmith-workspaces", { back: true });
   }
 
   function returnToSourceMenu() {
@@ -2736,7 +2402,6 @@ export function useInitSetup({
     modelId,
     modelIdOverride,
     reasoningEffort,
-    langSmithKey,
     onboardingConfig,
     copied,
     input,
@@ -2750,10 +2415,6 @@ export function useInitSetup({
     cronModeSelectionIndex,
     finalSelectionIndex,
     isCustomModelInput,
-    langsmithDraft,
-    langsmithRegionSelectionIndex,
-    langsmithWorkspaceSelectionIndex,
-    langsmithWorkspaces,
     modelSelectionIndex,
     reasoningEffortSelectionIndex,
     powerModeSelectionIndex,

@@ -1,4 +1,3 @@
-import { TavilySearch } from "@langchain/tavily";
 import { OPENWIKI_TAVILY_API_KEY_ENV_KEY } from "../../config/constants.js";
 import { normalizeStringArray } from "../config.js";
 import {
@@ -41,7 +40,7 @@ type TavilySearchResult = {
 const definition: ConnectorDefinition = {
   backend: "direct-api",
   description:
-    "Fetches web search results with Tavily through the LangChain Tavily integration.",
+    "Fetches web search results from Tavily.",
   displayName: "Web Search",
   id: "web-search",
   mode: "personal",
@@ -117,24 +116,22 @@ async function ingest(
 
   const limit = getOptionLimit(options.limit, config.maxResults);
   const timeRange = getWindowedTimeRange(config.timeRange, options.windowHours);
-  const tool = new TavilySearch({
-    excludeDomains: normalizeStringArray(config.excludeDomains),
-    includeAnswer: config.includeAnswer ?? true,
-    includeDomains: normalizeStringArray(config.includeDomains),
-    includeImages: config.includeImages ?? false,
-    includeRawContent: config.includeRawContent ?? false,
-    maxResults: limit,
-    searchDepth: normalizeSearchDepth(config.searchDepth),
-    tavilyApiKey,
-    timeRange,
-    topic: normalizeTopic(config.topic),
-  });
-
   const results = [];
   for (const query of queries) {
     results.push({
       query,
-      response: (await tool.invoke({ query })) as TavilySearchResult,
+      response: await searchTavily(query, {
+        apiKey: tavilyApiKey,
+        excludeDomains: normalizeStringArray(config.excludeDomains),
+        includeAnswer: config.includeAnswer ?? true,
+        includeDomains: normalizeStringArray(config.includeDomains),
+        includeImages: config.includeImages ?? false,
+        includeRawContent: config.includeRawContent ?? false,
+        maxResults: limit,
+        searchDepth: normalizeSearchDepth(config.searchDepth),
+        timeRange,
+        topic: normalizeTopic(config.topic),
+      }),
     });
   }
 
@@ -174,6 +171,45 @@ async function ingest(
     status: "success",
     warnings,
   };
+}
+
+async function searchTavily(
+  query: string,
+  options: {
+    apiKey: string;
+    excludeDomains: string[];
+    includeAnswer: boolean;
+    includeDomains: string[];
+    includeImages: boolean;
+    includeRawContent: boolean;
+    maxResults: number;
+    searchDepth: "advanced" | "basic";
+    timeRange: "day" | "month" | "week" | "year" | undefined;
+    topic: "general" | "news";
+  },
+): Promise<TavilySearchResult> {
+  const response = await fetch("https://api.tavily.com/search", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      api_key: options.apiKey,
+      query,
+      search_depth: options.searchDepth,
+      topic: options.topic,
+      max_results: options.maxResults,
+      include_answer: options.includeAnswer,
+      include_images: options.includeImages,
+      include_raw_content: options.includeRawContent,
+      include_domains: options.includeDomains,
+      exclude_domains: options.excludeDomains,
+      ...(options.timeRange ? { time_range: options.timeRange } : {}),
+    }),
+  });
+  if (!response.ok) {
+    const message = (await response.text()).slice(0, 500);
+    throw new Error(`Tavily search failed (${response.status}): ${message}`);
+  }
+  return (await response.json()) as TavilySearchResult;
 }
 
 function normalizeSearchDepth(

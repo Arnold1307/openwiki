@@ -11,7 +11,6 @@ import {
 } from "../../config/openwiki-home.js";
 import type { OpenWikiRunMode } from "../../cli/commands.js";
 import type { OpenAICompatibleAuthMode } from "../../config/constants.js";
-import type { LangSmithRegion } from "../../connectors/sources/langsmith/setup.js";
 import type {
   OnboardingMode,
   SourceSetupOption,
@@ -24,7 +23,7 @@ export const ONBOARDING_TEMPLATES = [
       "Maintain a structured project wiki from a local Git repository, with code-oriented pages for architecture, workflows, source maps, and operational guidance.",
     id: "code",
     name: "Code",
-    sourceIds: ["langsmith"],
+    sourceIds: [],
     suggestedSources: ["Local Git repository"],
     suggestedGoal: "A code wiki for this repository.",
   },
@@ -81,32 +80,6 @@ export const OPENAI_COMPATIBLE_AUTH_OPTIONS = [
   label: string;
 }[];
 
-export const LANGSMITH_REGION_OPTIONS = [
-  {
-    description: "US workspaces. The default.",
-    host: "https://api.smith.langchain.com",
-    id: "us",
-    name: "US",
-  },
-  {
-    description: "EU workspaces.",
-    host: "https://eu.api.smith.langchain.com",
-    id: "eu",
-    name: "EU",
-  },
-  {
-    description: "APAC workspaces.",
-    host: "https://apac.api.smith.langchain.com",
-    id: "apac",
-    name: "APAC",
-  },
-] as const satisfies readonly {
-  description: string;
-  host: string;
-  id: LangSmithRegion;
-  name: string;
-}[];
-
 export const SOURCE_OPTIONS = [
   {
     displayName: "Local Git repository",
@@ -120,18 +93,6 @@ export const SOURCE_OPTIONS = [
       "The default is the current working directory, and you can replace it with another path.",
       "You can add more repositories later in the connector config file.",
     ],
-    secretInputs: [],
-  },
-  {
-    displayName: "LangSmith traces",
-    examples: ["support-bot-prod", "chat-agent"],
-    id: "langsmith",
-    instructions: [
-      "Document how your agent runs, grounded in its LangSmith traces.",
-      "List the projects to document; written to openwiki/.langsmith.json (committed).",
-    ],
-    // No secret input: the LangSmith key is captured by the earlier `langsmith`
-    // spine step (and provided as a CI secret), and used at pull time, not here.
     secretInputs: [],
   },
   {

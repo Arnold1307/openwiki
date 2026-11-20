@@ -1,6 +1,5 @@
 import type React from "react";
 import { Box, Text } from "ink";
-import { openWikiEnvDisplayPath } from "../../config/openwiki-home.js";
 import {
   DEFAULT_PROVIDER,
   DEFAULT_OPENAI_COMPATIBLE_ENTRA_SCOPE,
@@ -35,7 +34,6 @@ import {
   getConnectedSourceCount,
   getCronFields,
   getFinalOptionLabel,
-  getLangsmithRegionLabel,
   getModelSelectionOptions,
   type ReasoningEffortSelectionOption,
   getProviderArticle,
@@ -58,7 +56,6 @@ import {
   CRON_FIELD_LABELS,
   CRON_MODE_OPTIONS,
   FINAL_OPTIONS,
-  LANGSMITH_REGION_OPTIONS,
   ONBOARDING_TEMPLATES,
   OPENAI_COMPATIBLE_AUTH_OPTIONS,
   POWER_MODE_OPTIONS,
@@ -68,7 +65,6 @@ import {
   STEP_GLYPH,
 } from "./constants.js";
 import type {
-  LangsmithWorkspaceDraft,
   PromptStep,
   SetupStepState,
   SourceSetupOption,
@@ -88,10 +84,6 @@ export function Prompt({
   input,
   inputDisplayWidth,
   isCustomModelInput,
-  langsmithDraft,
-  langsmithRegionSelectionIndex,
-  langsmithWorkspaceSelectionIndex,
-  langsmithWorkspaces,
   modelSelectionIndex,
   reasoningEffortOptions = [],
   reasoningEffortSelectionIndex = 0,
@@ -125,10 +117,6 @@ export function Prompt({
   input: string;
   inputDisplayWidth: number;
   isCustomModelInput: boolean;
-  langsmithDraft: LangsmithWorkspaceDraft | null;
-  langsmithRegionSelectionIndex: number;
-  langsmithWorkspaceSelectionIndex: number;
-  langsmithWorkspaces: LangsmithWorkspaceDraft[];
   modelSelectionIndex: number;
   reasoningEffortOptions?: readonly ReasoningEffortSelectionOption[];
   reasoningEffortSelectionIndex?: number;
@@ -414,22 +402,6 @@ export function Prompt({
     );
   }
 
-  if (step === "langsmith") {
-    return (
-      <Box flexDirection="column">
-        <Text>Optional: paste a LangSmith API key for tracing.</Text>
-        <BorderedInput
-          maxDisplayWidth={inputDisplayWidth}
-          marginTop={1}
-          prefix="LANGSMITH_API_KEY optional="
-          secret
-          value={input}
-        />
-        <Text color="gray">Press Enter with an empty value to skip.</Text>
-      </Box>
-    );
-  }
-
   if (step === "template") {
     const selectedTemplate =
       ONBOARDING_TEMPLATES[templateSelectionIndex] ?? ONBOARDING_TEMPLATES[0];
@@ -526,29 +498,20 @@ export function Prompt({
   }
 
   if (step === "source-menu") {
-    // LangSmith workspaces live in state until setup completes (not onboarding
-    // source instances), so count them here for the menu's configured display.
-    const langsmithWorkspaceCount = sourceOptions.some(
-      (source) => source.id === "langsmith",
-    )
-      ? langsmithWorkspaces.length
-      : 0;
-    const configuredCount =
-      getConnectedSourceCount(onboardingConfig, sourceOptions) +
-      langsmithWorkspaceCount;
+    const configuredCount = getConnectedSourceCount(
+      onboardingConfig,
+      sourceOptions,
+    );
 
     return (
       <Box flexDirection="column">
         <Text>Configure sources for this mode.</Text>
         {sourceOptions.map((source, index) => {
-          const isLangsmith = source.id === "langsmith";
           const sourceInstances = getSourceInstances(
             onboardingConfig,
             source.id,
           );
-          const count = isLangsmith
-            ? langsmithWorkspaces.length
-            : sourceInstances.length;
+          const count = sourceInstances.length;
           return (
             <Box flexDirection="column" key={source.id}>
               <Text>
@@ -559,19 +522,12 @@ export function Prompt({
                   isConfigured={count > 0}
                 />
               </Text>
-              {isLangsmith
-                ? langsmithWorkspaces.map((workspace) => (
-                    <Text color="gray" key={workspace.apiKeyEnv}>
-                      {"  "}- {getLangsmithRegionLabel(workspace.region)}:{" "}
-                      {workspace.projects.join(", ")}
-                    </Text>
-                  ))
-                : sourceInstances.map((sourceInstance) => (
-                    <Text color="gray" key={sourceInstance.id}>
-                      {"  "}- {sourceInstance.name ?? sourceInstance.id}{" "}
-                      <Text color="gray">({sourceInstance.id})</Text>
-                    </Text>
-                  ))}
+              {sourceInstances.map((sourceInstance) => (
+                <Text color="gray" key={sourceInstance.id}>
+                  {"  "}- {sourceInstance.name ?? sourceInstance.id}{" "}
+                  <Text color="gray">({sourceInstance.id})</Text>
+                </Text>
+              ))}
             </Box>
           );
         })}
@@ -703,110 +659,6 @@ export function Prompt({
           value={input}
         />
         <Text color="gray">Optional. Press Enter to continue.</Text>
-      </Box>
-    );
-  }
-
-  if (step === "source-langsmith-workspaces") {
-    const workspaceCount = langsmithWorkspaces.length;
-    return (
-      <Box flexDirection="column">
-        <Text>LangSmith workspaces to document.</Text>
-        <Text color="gray">
-          A LangSmith key is region-bound, so each workspace has its own region
-          and key. Select one to edit (clear its projects to remove it).
-        </Text>
-        {langsmithWorkspaces.map((workspace, index) => (
-          <Text key={workspace.apiKeyEnv}>
-            <SelectionMarker
-              isSelected={index === langsmithWorkspaceSelectionIndex}
-            />{" "}
-            {getLangsmithRegionLabel(workspace.region)}:{" "}
-            {workspace.projects.join(", ")}
-          </Text>
-        ))}
-        <Box flexDirection="column" marginTop={1}>
-          <Text>
-            <SelectionMarker
-              isSelected={langsmithWorkspaceSelectionIndex === workspaceCount}
-            />{" "}
-            Add a workspace
-          </Text>
-          <Text>
-            <SelectionMarker
-              isSelected={
-                langsmithWorkspaceSelectionIndex === workspaceCount + 1
-              }
-            />{" "}
-            Done
-          </Text>
-        </Box>
-        <Text color="gray">Use up/down arrows, then press Enter.</Text>
-      </Box>
-    );
-  }
-
-  if (step === "source-langsmith-key") {
-    const apiKeyEnv = langsmithDraft?.apiKeyEnv ?? "OPENWIKI_LANGSMITH_API_KEY";
-    return (
-      <Box flexDirection="column">
-        <Text>LangSmith API key for this workspace.</Text>
-        <Text color="gray">
-          The connector&apos;s own read key (not your app&apos;s tracing key).
-          Saved to {openWikiEnvDisplayPath} as {apiKeyEnv}, never committed.
-        </Text>
-        <BorderedInput
-          maxDisplayWidth={inputDisplayWidth}
-          marginTop={1}
-          prefix={`${apiKeyEnv}=`}
-          secret
-          value={input}
-        />
-        <Text color="gray">
-          Press Enter to confirm (empty keeps the saved key).
-        </Text>
-      </Box>
-    );
-  }
-
-  if (step === "source-langsmith-projects") {
-    return (
-      <Box flexDirection="column">
-        <Text>Which projects should this wiki document in this workspace?</Text>
-        <Text color="gray">
-          Comma-separated project names (as in LANGCHAIN_PROJECT). Written to
-          openwiki/.langsmith.json.
-        </Text>
-        <BorderedMultilineInput
-          maxDisplayWidth={inputDisplayWidth}
-          marginTop={1}
-          value={input}
-        />
-        <Text color="gray">Press Enter to confirm.</Text>
-      </Box>
-    );
-  }
-
-  if (step === "source-langsmith-region") {
-    const selectedRegion =
-      LANGSMITH_REGION_OPTIONS[langsmithRegionSelectionIndex] ??
-      LANGSMITH_REGION_OPTIONS[0];
-
-    return (
-      <Box flexDirection="column">
-        <Text>Which LangSmith region is this workspace in?</Text>
-        {LANGSMITH_REGION_OPTIONS.map((option, index) => (
-          <Text key={option.id}>
-            <SelectionMarker
-              isSelected={index === langsmithRegionSelectionIndex}
-            />{" "}
-            {option.name} <Text color="gray">({option.host})</Text>
-          </Text>
-        ))}
-        <Box flexDirection="column" marginTop={1}>
-          <Text color="gray">{selectedRegion.description}</Text>
-        </Box>
-        <Text color="gray">Use up/down arrows, then press Enter.</Text>
       </Box>
     );
   }

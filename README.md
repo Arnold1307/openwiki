@@ -1,8 +1,8 @@
 <!-- markdownlint-disable MD033 MD041 -->
 
-> **⚠️ ARCHIVIERT / KONSOLIDIERT (ADR-003, 16.11.2026):**
-> Dieses Repository (`openwiki`) wurde vollständig in **[`company-brain`](../company-brain/README.md)** (`https://github.com/Arnold1307/company-brain`) konsolidiert (Module `wiki`, `docgen` und `/mcp`).
-> Neue Entwicklungen, Code-Wiki-Abfragen (`/api/ref`, `/api/projects/{id}/context`) und Code-zu-Doku-Läufe finden ausschließlich in `company-brain` statt. Dieses Repository ist schreibgeschützt archiviert.
+> **âš ï¸ ARCHIVIERT / KONSOLIDIERT (ADR-003, 16.11.2026):**
+> Dieses Repository (`openwiki`) wurde vollstÃ¤ndig in **[`company-brain`](../company-brain/README.md)** (`https://github.com/Arnold1307/company-brain`) konsolidiert (Module `wiki`, `docgen` und `/mcp`).
+> Neue Entwicklungen, Code-Wiki-Abfragen (`/api/ref`, `/api/projects/{id}/context`) und Code-zu-Doku-LÃ¤ufe finden ausschlieÃŸlich in `company-brain` statt. Dieses Repository ist schreibgeschÃ¼tzt archiviert.
 
 <div align="center">
 
@@ -14,7 +14,6 @@
 [![downloads](https://img.shields.io/npm/dm/openwiki.svg?style=flat&labelColor=030710&color=1A6FB5)](https://www.npmjs.com/package/openwiki)
 [![Node](https://img.shields.io/node/v/openwiki.svg?style=flat&labelColor=030710&color=1A6FB5)](https://nodejs.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-1A6FB5.svg?style=flat&labelColor=030710)](./LICENSE)
-[![Built with Deep Agents](https://img.shields.io/badge/built%20with-DeepAgents-1A6FB5.svg?style=flat&labelColor=030710)](https://github.com/langchain-ai/deepagentsjs)
 
 <a href="https://trendshift.io/repositories/70339?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-70339" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/70339/daily" alt="langchain-ai%2Fopenwiki | Trendshift" width="250" height="55"/></a>
 
@@ -24,14 +23,14 @@ OpenWiki turns your codebase and knowledge sources into a linked Markdown wiki t
 
 For repository wikis, OpenWiki tracks facts back to source evidence so updates can focus on what changed. Start inside your coding agent, or use the standalone CLI for repository docs, personal knowledge, and scheduled updates.
 
-[Get started](#quick-start) · [Search and link wikis](#search-your-wiki) · [Explore](#explore-your-wiki) · [Standalone CLI](#run-openwiki-directly) · [Command reference](#command-reference)
+[Get started](#quick-start) Â· [Search and link wikis](#search-your-wiki) Â· [Explore](#explore-your-wiki) Â· [Standalone CLI](#run-openwiki-directly) Â· [Command reference](#command-reference)
 
-## 🎉 What's new
+## ðŸŽ‰ What's new
 
-- **Linked wiki workspaces:** group related repositories with `openwiki link`, search across their wikis, and read relevant sections through MCP. [See how it works →](#create-wiki-workspaces)
-- **More coding-agent integrations:** Oh My Pi, Antigravity, IBM Bob / Bob Shell, and Kiro join Codex, Claude Code, OpenCode, GitHub Copilot and Cursor. [Connect your agent →](#coding-agent-integrations)
-- **Parallel page workers:** native CLI runs can now document multiple pages concurrently while saving progress page by page and adapting to provider rate limits. [Configure concurrency →](#parallel-page-workers)
-- **Resumable updates and grounded Claims:** completed pages survive interruptions, and versioned source evidence identifies facts that need attention. [Explore the architecture →](#how-it-works)
+- **Linked wiki workspaces:** group related repositories with `openwiki link`, search across their wikis, and read relevant sections through MCP. [See how it works â†’](#create-wiki-workspaces)
+- **More coding-agent integrations:** Oh My Pi, Antigravity, IBM Bob / Bob Shell, and Kiro join Codex, Claude Code, OpenCode, GitHub Copilot and Cursor. [Connect your agent â†’](#coding-agent-integrations)
+- **Parallel page workers:** native CLI runs can now document multiple pages concurrently while saving progress page by page and adapting to provider rate limits. [Configure concurrency â†’](#parallel-page-workers)
+- **Resumable updates and grounded Claims:** completed pages survive interruptions, and versioned source evidence identifies facts that need attention. [Explore the architecture â†’](#how-it-works)
 
 Portable [OKF v0.2 output](#open-knowledge-format-okf-v02) and [publishable visualizers](#explore-your-wiki) are also available.
 
@@ -107,11 +106,11 @@ On Windows, install with a Node.js package manager (`npm install -g openwiki` or
 <details>
 <summary><b>What the coding-agent integration supports</b></summary>
 
-Host-driven runs currently support repository code wikis, not personal brains. They use repository source and tests; connector-sourced context, including LangSmith, is not yet supported.
+Host-driven runs currently support repository code wikis, not personal brains. They use repository source and tests; connector-sourced context, is not yet supported.
 
 The coding agent investigates the repository, plans the wiki, and writes each assigned page sequentially with its native repository tools. OpenWiki owns the durable queue, Claims validation and persistence, source-drift handling, and deterministic finalization of Claims, indexes, provenance, setup files, and metadata.
 
-The MCP generation lifecycle is `openwiki_begin → openwiki_submit_plan → openwiki_next_page → openwiki_submit_page → … → openwiki_finish`, with optional on-demand `openwiki_inspect_page_claims`. The host submits only sparse Claim decisions for each page: OpenWiki retains current unaffected Claims, applies explicit confirmations, revisions, additions, or retractions, and refuses to finish until the final state is durable.
+The MCP generation lifecycle is `openwiki_begin â†’ openwiki_submit_plan â†’ openwiki_next_page â†’ openwiki_submit_page â†’ â€¦ â†’ openwiki_finish`, with optional on-demand `openwiki_inspect_page_claims`. The host submits only sparse Claim decisions for each page: OpenWiki retains current unaffected Claims, applies explicit confirmations, revisions, additions, or retractions, and refuses to finish until the final state is durable.
 
 Contributors adding another coding agent should follow [Adding a coding-agent integration](CONTRIBUTING.md#adding-a-coding-agent-integration).
 
@@ -150,7 +149,7 @@ Create a workspace such as `Payments`, then select the repositories to include. 
 <details>
 <summary><b>Finding repositories and choosing a search workspace</b></summary>
 
-The finder streams Git repositories below the editable path, starting at the launch directory. Extend the path to narrow results, or Backspace toward `~` to broaden and rescan from the nearest existing directory. Each repository appears once by path: `○` marks an available OpenWiki repository and becomes `●` when selected. Repositories without OpenWiki documentation are dimmed. Selections remain pinned above the changing results and also remain in the finder.
+The finder streams Git repositories below the editable path, starting at the launch directory. Extend the path to narrow results, or Backspace toward `~` to broaden and rescan from the nearest existing directory. Each repository appears once by path: `â—‹` marks an available OpenWiki repository and becomes `â—` when selected. Repositories without OpenWiki documentation are dimmed. Selections remain pinned above the changing results and also remain in the finder.
 
 From an OpenWiki source checkout, run the manager with `pnpm run dev link ~/dev`. The registry is stored privately under `~/.openwiki` (or `OPENWIKI_CONFIG_DIR`).
 
@@ -248,7 +247,7 @@ The dedicated token is intentional: pull requests created with the default `GITH
 
 ## Run OpenWiki directly
 
-You can also use OpenWiki's own [Deep Agents](https://github.com/langchain-ai/deepagentsjs) documentation agent, including for scheduled runs and personal wikis. After [installing the CLI](#1-install-openwiki), initialize a repository wiki:
+OpenWiki includes a documentation agent for scheduled runs and personal wikis. After [installing the CLI](#1-install-openwiki), initialize a repository wiki:
 
 ```sh
 openwiki --init
@@ -295,9 +294,9 @@ Concurrency defaults to `1` and accepts values from `1` to `8`. Start at `2` to 
 
 Each worker owns exactly one page, and completed pages remain durable resume units. The quickstart page is written last so it can link to the pages it routes to. A worker that fails on a provider rate limit lowers the run's concurrency by one for the rest of the run; the page it was writing is restored and picked up by the next update.
 
-LangChain handles transient provider errors. Retry attempts default to `3`, or `5` when `OPENWIKI_PAGE_CONCURRENCY` is above `1`. Override with `OPENWIKI_PROVIDER_RETRY_ATTEMPTS=3` (a positive integer).
+OpenWiki retries transient provider errors. Retry attempts default to `3`, or `5` when `OPENWIKI_PAGE_CONCURRENCY` is above `1`. Override with `OPENWIKI_PROVIDER_RETRY_ATTEMPTS=3` (a positive integer).
 
-With LangSmith tracing on, the planner and each page worker are separate traces, grouped into one LangSmith thread per run. The thread id is the run's id, which a resumed run keeps; set `OPENWIKI_TRACE_THREAD_ID` to choose it yourself, for example from CI so a run's thread can be found from the commit that triggered it.
+
 
 </details>
 
@@ -320,11 +319,11 @@ The override selects a separate state directory; OpenWiki does not move or delet
 
 Your wiki stays in the repository as plain Markdown you own, with OpenWiki-managed grounding and run metadata versioned alongside it.
 
-- **Agents read it as context.** On each `code` run, OpenWiki maintains an `AGENTS.md` at the repo root, and refreshes `CLAUDE.md` when the repository already has one. Claude Code reads `AGENTS.md` when no `CLAUDE.md` exists, so OpenWiki does not create one. Their managed instructions use selective, progressive `openwiki_search`/`openwiki_read` retrieval for concrete questions when available and use `openwiki/quickstart.md` as the fallback. OpenWiki only rewrites its own `<!-- OPENWIKI:START -->…<!-- OPENWIKI:END -->` block and leaves the rest of each file untouched.
+- **Agents read it as context.** On each `code` run, OpenWiki maintains an `AGENTS.md` at the repo root, and refreshes `CLAUDE.md` when the repository already has one. Claude Code reads `AGENTS.md` when no `CLAUDE.md` exists, so OpenWiki does not create one. Their managed instructions use selective, progressive `openwiki_search`/`openwiki_read` retrieval for concrete questions when available and use `openwiki/quickstart.md` as the fallback. OpenWiki only rewrites its own `<!-- OPENWIKI:START -->â€¦<!-- OPENWIKI:END -->` block and leaves the rest of each file untouched.
 - **Grounding stays with the wiki.** Versioned claim sidecars under `openwiki/.claims/` travel with the Markdown, so the evidence needed to maintain factual pages is inspectable and reviewable.
 - **You set the brief.** Repository-specific instructions live in `openwiki/INSTRUCTIONS.md`, a user-authored file OpenWiki reads for scope and priorities but never rewrites during normal runs.
 - **No-op runs do not churn docs.** A clean update skips model work and leaves wiki content untouched while refreshing `.last-update.json` to record that the check ran.
-- **Local, private config.** Provider choice, keys, and optional LangSmith tracing are saved to `~/.openwiki/.env` on your machine.
+- **Local, private config.** Provider choice and keys are saved to `~/.openwiki/.env` on your machine.
 
 ## Ignoring paths
 
@@ -369,7 +368,7 @@ Page completion is a durability boundary. OpenWiki persists the reconciled Claim
 
 </details>
 
-Grounded Claims currently apply to repository code wikis and repository evidence. Connector-derived facts, including LangSmith-only observations, are not claimed.
+Grounded Claims currently apply to repository code wikis and repository evidence. Connector-derived facts are not claimed.
 
 ### Open Knowledge Format (OKF v0.2)
 
@@ -430,7 +429,7 @@ During an ingestion run, deterministic connector tools write raw data and manife
 - `notion` targets the hosted Notion MCP server, so authenticate through Notion OAuth rather than pasting a token.
 - `google` uses the Gmail API directly with OAuth user credentials to fetch recent mail.
 - `slack` uses Slack's Web API with OAuth user and bot tokens to ingest scoped conversations and search results.
-- `web-search` uses Tavily through LangChain and requires `TAVILY_API_KEY`.
+- `web-search` uses Tavily directly and requires `TAVILY_API_KEY`.
 - `hackernews` uses the public Hacker News feed and search APIs, with no credentials required.
 
 `openwiki auth <provider>` runs a local browser OAuth flow, saves returned tokens into `~/.openwiki/.env`, creates connector config when possible, and discovers MCP tools for MCP-backed providers. Slack and Gmail require app client credentials to already be set in that file; Notion uses dynamic client registration for hosted MCP; X uses OAuth 2.0 with PKCE. `openwiki auth configure <provider>` and `openwiki auth tools <provider>` are advanced retry commands.
@@ -438,26 +437,6 @@ During an ingestion run, deterministic connector tools write raw data and manife
 Connector secrets are referenced by env var name and stored in `~/.openwiki/.env`; connector config files never contain raw secret values.
 
 **Slack OAuth tunnel.** `openwiki ngrok start` starts an ngrok tunnel with a random HTTPS forwarding URL, reads ngrok's local inspection API, appends `/callback`, and saves `OPENWIKI_HTTPS_OAUTH_REDIRECT_URI` automatically. Register the printed callback URL in Slack. With a fixed domain, run `openwiki ngrok start https://<your-ngrok-domain>`.
-
-</details>
-
-### LangSmith connector (code mode)
-
-The connectors above feed a `personal` wiki. The **LangSmith** connector instead enriches a `code` wiki: it pulls recent LangSmith traces (tool calls, outcomes, and latency) for the projects you choose through the official LangSmith SDK, so a repository's docs reflect how its code actually behaves at runtime, not just what the source says.
-
-<details>
-<summary><b>Configure LangSmith projects, regions, and credentials</b></summary>
-
-Configure it during `openwiki --init` in `code` mode. From the source menu, add LangSmith, pick your workspace region (US, EU, or APAC), and list the projects to document. OpenWiki writes a committed `openwiki/.langsmith.json` that names the workspaces and projects (never the key itself), so every teammate and CI run documents the same set. The API key is read from the environment:
-
-```sh
-OPENWIKI_LANGSMITH_API_KEY="<your-langsmith-key>"
-```
-
-Locally the setup wizard saves this to `~/.openwiki/.env`. In CI, set it as a repository secret and export it for the run.
-
-> [!NOTE]
-> A LangSmith key is workspace- and region-bound. To document projects across more than one workspace, add an entry per workspace, each with its own key named `OPENWIKI_LANGSMITH_API_KEY_2`, `OPENWIKI_LANGSMITH_API_KEY_3`, and so on. The connector only talks to the official US (`api.smith.langchain.com`), EU (`eu.api.smith.langchain.com`), and APAC (`apac.api.smith.langchain.com`) hosts.
 
 </details>
 
@@ -681,7 +660,7 @@ OPENROUTER_API_KEY=your-key
 OPENWIKI_OPENROUTER_PROVIDER_ONLY=Novita
 ```
 
-**Output-token limit.** OpenWiki uses a 16,384-token per-request default for modern Claude 4/5 models because older LangChain model metadata otherwise limits newer Claude aliases to 4,096 tokens. Set a provider-neutral limit for the currently selected model with:
+**Output-token limit.** OpenWiki uses a 16,384-token per-request default for modern Claude 4/5 models. Set a provider-neutral limit for the currently selected model with:
 
 ```bash
 OPENWIKI_MAX_OUTPUT_TOKENS=16384
@@ -689,7 +668,7 @@ OPENWIKI_MAX_OUTPUT_TOKENS=16384
 
 OpenWiki maps this setting to the selected provider's request shape. Custom models otherwise retain their provider or SDK default, since their supported output windows are not known to OpenWiki.
 
-**OpenRouter output-token cap.** By default no `max_tokens` is sent, so OpenRouter's credit pre-check budgets for the model's full advertised output ceiling — on a low credit balance every request can fail with a 402 error. Existing installations can keep an OpenRouter-specific cap with:
+**OpenRouter output-token cap.** By default no `max_tokens` is sent, so OpenRouter's credit pre-check budgets for the model's full advertised output ceiling â€” on a low credit balance every request can fail with a 402 error. Existing installations can keep an OpenRouter-specific cap with:
 
 ```bash
 OPENWIKI_OPENROUTER_MAX_TOKENS=8192
@@ -699,7 +678,7 @@ The OpenRouter-specific setting takes precedence over `OPENWIKI_MAX_OUTPUT_TOKEN
 
 For native worker concurrency and provider retry settings, see [Parallel page workers](#parallel-page-workers).
 
-**Bedrock stream idle timeout.** For the Bedrock provider, set `OPENWIKI_STREAM_IDLE_TIMEOUT` to control how long the client waits for the first or next streamed response chunk, for example `OPENWIKI_STREAM_IDLE_TIMEOUT=300000`. The value is milliseconds and must be an integer from `0` to `2147483647`. Set it to `0` to disable the watchdog. If unset, OpenWiki preserves the `@langchain/aws` provider default. Prefer a sufficiently long finite timeout over disabling the watchdog so a stalled stream cannot hang forever.
+**Bedrock stream idle timeout.** For the Bedrock provider, set `OPENWIKI_STREAM_IDLE_TIMEOUT` to control how long the client waits for the first or next streamed response chunk, for example `OPENWIKI_STREAM_IDLE_TIMEOUT=300000`. The value is milliseconds and must be an integer from `0` to `2147483647`. Set it to `0` to disable the watchdog. Prefer a sufficiently long finite timeout over disabling the watchdog so a stalled stream cannot hang forever.
 
 **Reasoning effort.** Set `OPENWIKI_REASONING_EFFORT` to configure reasoning for a supported provider and model. OpenAI GPT-5.6 models use the Responses API values `none`, `low`, `medium`, `high`, `xhigh`, and `max`. Gemini 3.6 Flash maps `low`, `medium`, and `high` to Gemini's thinking level. NVIDIA NIM's Nemotron 3 Super supports `none`, `low`, and `high`. In an interactive chat, use `/effort` to choose an available value or `/effort default` to restore the provider default. Leave the variable unset to preserve the provider default; invalid provider, model, or effort combinations fail before a request is sent.
 
@@ -730,7 +709,7 @@ openwiki integrations uninstall <bob|codex|claude|opencode|cursor|kiro|omp|antig
 openwiki --help                  # full help
 ```
 
-In chat, `/api-key` updates the current provider key and `/langsmith-key` updates or clears LangSmith tracing credentials, both with masked prompts.
+In chat, `/api-key` updates the current provider key with a masked prompt.
 
 ## Telemetry
 
@@ -759,6 +738,6 @@ Contributions are welcome. Please read [CONTRIBUTING.md](./CONTRIBUTING.md) befo
 
 ## Projektdokumente
 
-- `CHANGELOG.md` – Änderungen je Version
-- `USE-CASE.md` – Anwendungsfälle
-- `WORKFLOW.md` – Ablauf, Gates und offene Punkte
+- `CHANGELOG.md` â€“ Ã„nderungen je Version
+- `USE-CASE.md` â€“ AnwendungsfÃ¤lle
+- `WORKFLOW.md` â€“ Ablauf, Gates und offene Punkte

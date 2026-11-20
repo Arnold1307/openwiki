@@ -5,7 +5,6 @@ import type { OpenAICompatibleAuthMode } from "../../config/constants.js";
 import type { ReasoningEffort } from "../../config/reasoning.js";
 import type { AuthProviderId } from "../../auth/types.js";
 import type { ConnectorId } from "../../connectors/types.js";
-import type { LangSmithRegion } from "../../connectors/sources/langsmith/setup.js";
 
 export type InitSetupResult = {
   mode: OpenWikiRunMode;
@@ -18,7 +17,6 @@ export type InitSetupResult = {
   savedBaseUrl: boolean;
   savedGcpLocation: boolean;
   savedGcpProject: boolean;
-  savedLangSmithKey: boolean;
   savedModelId: boolean;
   savedProvider: boolean;
   savedRegion: boolean;
@@ -51,7 +49,6 @@ export type PromptStep =
   | "final"
   | "gcp-location"
   | "gcp-project"
-  | "langsmith"
   | "model"
   | "oauth-login"
   | "provider"
@@ -65,10 +62,6 @@ export type PromptStep =
   | "global-power-mode"
   | "source-description"
   | "source-description-custom"
-  | "source-langsmith-key"
-  | "source-langsmith-projects"
-  | "source-langsmith-region"
-  | "source-langsmith-workspaces"
   | "source-menu"
   | "source-path"
   | "source-confirm-continue"
@@ -135,18 +128,6 @@ export type OnboardingMode = {
   suggestedGoal: string;
 };
 
-/**
- * One LangSmith workspace as the wizard edits it. `apiKey` holds a value entered
- * this session (empty = keep the committed key); it is written to ~/.openwiki/.env
- * under `apiKeyEnv` on completion, never committed.
- */
-export interface LangsmithWorkspaceDraft {
-  apiKeyEnv: string;
-  region: LangSmithRegion;
-  apiKey: string;
-  projects: string[];
-}
-
 export type SetupStepState = "current" | "done" | "optional" | "pending";
 
 /**
@@ -162,7 +143,6 @@ export interface CompleteSetupOptions {
   nextEntraScope?: string | null;
   nextGcpLocation: string | null;
   nextGcpProject: string | null;
-  nextLangSmithKey: string | null;
   nextModelId: string | null;
   nextReasoningEffort?: ReasoningEffortSelection | null;
 

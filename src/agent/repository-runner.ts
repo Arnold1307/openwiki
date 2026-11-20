@@ -1,22 +1,5 @@
 import { scheduler } from "node:timers/promises";
-import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
-import {
-  AIMessage,
-  AIMessageChunk,
-  ChatMessage,
-  ChatMessageChunk,
-  ToolMessage,
-  collapseToolCallChunks,
-  defaultToolCallParser,
-  type InvalidToolCall,
-  type ToolCall,
-  type ToolCallChunk,
-} from "@langchain/core/messages";
-import { DynamicStructuredTool } from "@langchain/core/tools";
-import { createDeepAgent, createFilesystemMiddleware } from "deepagents";
-import { createMiddleware } from "langchain";
 import { z } from "zod";
-import { resolveTraceThreadId } from "../config/constants.js";
 import { RepositoryRunError } from "../generation/errors.js";
 import {
   beginRepositoryRun,
@@ -36,10 +19,7 @@ import {
 } from "../generation/repository-run.js";
 import type { RepositoryRunMode } from "../generation/run-state.js";
 import { OPENWIKI_PRODUCER_ACTOR } from "../version.js";
-import {
-  AGENT_FILESYSTEM_PERMISSIONS,
-  createAgentBackend,
-} from "./agent-backend.js";
+import { createAgentBackend } from "./agent-backend.js";
 import { OpenWikiLocalShellBackend } from "./docs-only-backend.js";
 import { OpenWikiIgnore } from "./openwiki-ignore.js";
 import {
@@ -47,6 +27,9 @@ import {
   createRepositoryPlannerPrompt,
 } from "./repository-prompts.js";
 import type { OpenWikiRunEvent } from "./types.js";
+import type { ProviderModel, RuntimeTool } from "../model/types.js";
+import { runAgentLoop } from "./agent-loop.js";
+import { createAgentTools } from "./tool-runtime.js";
 
 const PlanPageSchema = z
   .object({
@@ -84,33 +67,12 @@ const ClaimReconciliationSchema = z
   })
   .strict();
 
-const PLANNER_FILESYSTEM_TOOLS = ["read_file", "ls", "glob", "grep"] as const;
-const PAGE_FILESYSTEM_TOOLS = [
-  ...PLANNER_FILESYSTEM_TOOLS,
-  "write_file",
-  "edit_file",
-] as const;
 const WORKER_TOOL_NAMES = new Set<string>([
-  ...PAGE_FILESYSTEM_TOOLS,
+  "read_file", "ls", "glob", "grep", "write_file", "edit_file", "execute",
   "submit_plan",
   "inspect_claims",
   "submit_page",
 ]);
-
-// DeepAgents 1.12 adds a general-purpose task tool even when subagents is
-// empty. Repository workers are deliberately non-delegating, so remove that
-// model-facing capability after all tool-contributing middleware has run.
-const NO_DELEGATION_MIDDLEWARE = createMiddleware({
-  name: "OpenWikiRepositoryWorkerNoDelegation",
-  wrapModelCall: async (request, handler) => {
-    const response = await handler({
-      ...request,
-      tools: request.tools?.filter(({ name }) => name !== "task"),
-    });
-
-    return coerceRepositoryWorkerModelResponse(response);
-  },
-});
 
 type PendingPageJob = Extract<
   NextRepositoryPageResult,
@@ -118,137 +80,23 @@ type PendingPageJob = Extract<
 >["job"];
 
 /**
- * Normalizes provider-streaming aggregates that are assistant output but were
- * typed as generic chat messages because the first OpenAI-compatible SSE delta
- * arrived without `role:"assistant"` (for example reasoning-only first deltas).
- *
- * LangChain validates each wrapModelCall response before the agent node can
- * continue. Coerce only this repository-worker boundary so provider transport
- * handling stays owned by the model client.
- */
-function coerceRepositoryWorkerModelResponse(response: AIMessage): AIMessage {
-  const candidate: unknown = response;
-
-  if (AIMessage.isInstance(candidate)) {
-    return candidate;
-  }
-
-  if (
-    ChatMessageChunk.isInstance(candidate) &&
-    isGenericAssistantModelResponse(candidate)
-  ) {
-    const rawToolCalls = getOpenAiRawToolCalls(candidate.additional_kwargs);
-    const toolCallFields =
-      rawToolCalls === null
-        ? {}
-        : collapseToolCallChunks(rawToolCalls.map(toToolCallChunk));
-
-    return new AIMessageChunk({
-      content: candidate.content,
-      additional_kwargs: candidate.additional_kwargs,
-      response_metadata: candidate.response_metadata,
-      id: candidate.id,
-      name: candidate.name,
-      ...toolCallFields,
-    });
-  }
-
-  if (
-    ChatMessage.isInstance(candidate) &&
-    isGenericAssistantModelResponse(candidate)
-  ) {
-    const rawToolCalls = getOpenAiRawToolCalls(candidate.additional_kwargs);
-    const toolCallFields =
-      rawToolCalls === null ? {} : parseRawOpenAiToolCalls(rawToolCalls);
-
-    return new AIMessage({
-      content: candidate.content,
-      additional_kwargs: candidate.additional_kwargs,
-      response_metadata: candidate.response_metadata,
-      id: candidate.id,
-      name: candidate.name,
-      ...toolCallFields,
-    });
-  }
-
-  return response;
-}
-
-function isGenericAssistantModelResponse(response: { role?: string }): boolean {
-  return response.role === undefined || response.role === "assistant";
-}
-
-function getOpenAiRawToolCalls(
-  additionalKwargs: Record<string, unknown> | undefined,
-): Record<string, unknown>[] | null {
-  const rawToolCalls = additionalKwargs?.tool_calls;
-
-  if (!Array.isArray(rawToolCalls)) {
-    return null;
-  }
-
-  return rawToolCalls.filter(isRecord);
-}
-
-function parseRawOpenAiToolCalls(rawToolCalls: Record<string, unknown>[]): {
-  invalid_tool_calls: InvalidToolCall[];
-  tool_calls: ToolCall[];
-} {
-  const [toolCalls, invalidToolCalls] = defaultToolCallParser(rawToolCalls);
-
-  return {
-    invalid_tool_calls: invalidToolCalls,
-    tool_calls: toolCalls,
-  };
-}
-
-function toToolCallChunk(rawToolCall: Record<string, unknown>): ToolCallChunk {
-  const rawFunction = rawToolCall.function;
-  const functionFields = isRecord(rawFunction) ? rawFunction : {};
-
-  return {
-    id: typeof rawToolCall.id === "string" ? rawToolCall.id : undefined,
-    index:
-      typeof rawToolCall.index === "number" ? rawToolCall.index : undefined,
-    name:
-      typeof functionFields.name === "string" ? functionFields.name : undefined,
-    args:
-      typeof functionFields.arguments === "string"
-        ? functionFields.arguments
-        : undefined,
-    type: "tool_call_chunk",
-  };
-}
-
-/**
  * Converts a bounded submission rejection into a failed tool result.
  *
  * @param toolName - Completion tool that rejected the model payload.
  * @param error - Repository lifecycle error returned to the worker.
  * @param retry - Concrete next-step instruction shown to the worker.
- * @param toolCallId - LangChain identifier for the active tool call.
  * @returns Error-status tool message that keeps the worker loop active.
  */
 function createSubmissionRejection(
   toolName: "submit_plan" | "submit_page",
   error: RepositoryRunError,
   retry: string,
-  toolCallId: string | undefined,
-): ToolMessage {
-  if (!toolCallId) {
-    throw new Error(`${toolName} rejection requires an active tool call id.`);
-  }
-
-  return new ToolMessage({
-    name: toolName,
-    tool_call_id: toolCallId,
-    status: "error",
-    content: JSON.stringify({
+): string {
+  return JSON.stringify({
       status: "rejected",
       code: error.code,
       message: error.message,
       retry,
-    }),
   });
 }
 
@@ -289,7 +137,7 @@ export interface NativeRepositoryGenerationOptions {
   /**
    * Initialized chat model reused by fresh planner and page workers.
    */
-  model: BaseChatModel;
+  model: ProviderModel;
 
   /**
    * Maximum page workers running at once.
@@ -363,6 +211,7 @@ export async function runNativeRepositoryGeneration(
       run,
       view,
       options.model,
+      options.modelId,
       run.state.planningContext,
       options.onEvent,
     );
@@ -375,6 +224,7 @@ export async function runNativeRepositoryGeneration(
     view,
     options.pageConcurrency ?? 1,
     options.workerStartStaggerMs ?? DEFAULT_WORKER_START_STAGGER_MS,
+    options.modelId,
   );
   options.onEvent?.({
     type: "repository_progress",
@@ -433,7 +283,8 @@ async function beginNativeRepositoryRun(
 async function runPlanningAgent(
   run: ActiveRepositoryRun,
   view: ActiveBeginView,
-  model: BaseChatModel,
+  model: ProviderModel,
+  modelId: string,
   planningContext?: string,
   onEvent?: (event: OpenWikiRunEvent) => void,
 ): Promise<void> {
@@ -450,14 +301,16 @@ async function runPlanningAgent(
   });
 
   let submitted = false;
-  const submitPlanTool = new DynamicStructuredTool({
+  const submitPlanTool: RuntimeTool = {
     name: "submit_plan",
     description:
       "Submit the final canonical OpenWiki page plan. This is the only completion action for planning.",
-    schema: PlanSchema,
-    func: async (input, _runManager, config) => {
+    parameters: z.toJSONSchema(PlanSchema) as Record<string, unknown>,
+    execute: async (input) => {
       try {
-        const result = await submitRepositoryPlan(run, input);
+        const parsed = PlanSchema.safeParse(input);
+        if (!parsed.success) return JSON.stringify({ status: "rejected", code: "invalid_input", message: parsed.error.message, retry: "Correct the plan and call submit_plan again." });
+        const result = await submitRepositoryPlan(run, parsed.data);
         submitted = true;
         return JSON.stringify(result);
       } catch (error) {
@@ -469,8 +322,6 @@ async function runPlanningAgent(
             "submit_plan",
             error,
             "Correct the plan and call submit_plan again.",
-            (config as { toolCall?: { id?: string } } | undefined)?.toolCall
-              ?.id,
           );
         }
         if (
@@ -483,58 +334,30 @@ async function runPlanningAgent(
             "submit_plan",
             error,
             "A plan is already installed. Stop planning and do not call submit_plan again.",
-            (config as { toolCall?: { id?: string } } | undefined)?.toolCall
-              ?.id,
           );
         }
         throw error;
       }
     },
-  });
+  };
 
   const backend = createAgentBackend(wikiBackend);
-  const agent = createDeepAgent({
-    name: PLANNER_AGENT_NAME,
-    model,
-    tools: [submitPlanTool],
-    backend,
-    middleware: [
-      createFilesystemMiddleware({
-        backend,
-        permissions: AGENT_FILESYSTEM_PERMISSIONS,
-        tools: PLANNER_FILESYSTEM_TOOLS,
-      }),
-      NO_DELEGATION_MIDDLEWARE,
-    ],
-    skills: ["/skills/"],
-    subagents: [],
-    permissions: AGENT_FILESYSTEM_PERMISSIONS,
-    systemPrompt: createRepositoryPlannerPrompt(view, planningContext),
-  });
+  const tools = [...createAgentTools(backend, "repository"), submitPlanTool];
 
   await streamWorkerTools(
-    agent,
-    [{ role: "user", content: "Plan this repository wiki now." }],
-    resolveTraceThreadId(run.state.runId),
+    model,
+    modelId,
+    [
+      { role: "system", content: createRepositoryPlannerPrompt(view, planningContext) },
+      { role: "user", content: "Plan this repository wiki now." },
+    ],
+    tools,
     onEvent,
   );
 
   if (!submitted || !run.state.plan) {
     throw new Error("Repository planning worker exited without submit_plan.");
   }
-}
-
-/** The planner's trace name in LangSmith (otherwise the graph default, "LangGraph"). */
-export const PLANNER_AGENT_NAME = "planning agent";
-
-/**
- * A page worker's trace name in LangSmith: the page it owns, so a run's thread
- * reads as one planner and one worker per page.
- *
- * @param page - Canonical page path, such as `/openwiki/coverage/forms/ho-3.md`.
- */
-export function workerAgentName(page: string): string {
-  return `worker agent: ${page.replace(/^\/openwiki\//u, "").replace(/\.md$/u, "")}`;
 }
 
 const QUICKSTART_PAGE_PATH = "/openwiki/quickstart.md";
@@ -614,11 +437,12 @@ interface PageWorkerPool {
  */
 async function runPendingPageAgents(
   run: ActiveRepositoryRun,
-  model: BaseChatModel,
+  model: ProviderModel,
   onEvent: ((event: OpenWikiRunEvent) => void) | undefined,
   view: ActiveBeginView,
   pageConcurrency: number,
   workerStartStaggerMs: number,
+  modelId: string,
 ): Promise<RepositoryPageSnapshot[]> {
   const size = Math.max(1, Math.floor(pageConcurrency));
   const pool: PageWorkerPool = {
@@ -647,10 +471,11 @@ async function runPendingPageAgents(
     pool,
     heldBack,
     workerStartStaggerMs,
+    modelId,
   );
   if (!pool.fatal && heldBack.size > 0) {
     pool.size = 1;
-    await runWorkerLoops(run, model, onEvent, view, pool, new Set(), 0);
+    await runWorkerLoops(run, model, onEvent, view, pool, new Set(), 0, modelId);
   }
 
   if (pool.fatal) throw pool.fatal.error;
@@ -662,12 +487,13 @@ async function runPendingPageAgents(
  */
 async function runWorkerLoops(
   run: ActiveRepositoryRun,
-  model: BaseChatModel,
+  model: ProviderModel,
   onEvent: ((event: OpenWikiRunEvent) => void) | undefined,
   view: ActiveBeginView,
   pool: PageWorkerPool,
   heldBack: ReadonlySet<string>,
   workerStartStaggerMs: number,
+  modelId: string,
 ): Promise<void> {
   await Promise.all(
     Array.from({ length: pool.size }, (_, slot) =>
@@ -680,6 +506,7 @@ async function runWorkerLoops(
         pool,
         heldBack,
         workerStartStaggerMs,
+        modelId,
       ),
     ),
   );
@@ -693,12 +520,13 @@ async function runWorkerLoops(
 async function runWorkerLoop(
   slot: number,
   run: ActiveRepositoryRun,
-  model: BaseChatModel,
+  model: ProviderModel,
   onEvent: ((event: OpenWikiRunEvent) => void) | undefined,
   view: ActiveBeginView,
   pool: PageWorkerPool,
   heldBack: ReadonlySet<string>,
   workerStartStaggerMs: number,
+  modelId: string,
 ): Promise<void> {
   if (slot > 0 && workerStartStaggerMs > 0) {
     await scheduler.wait(slot * workerStartStaggerMs);
@@ -716,7 +544,7 @@ async function runWorkerLoop(
 
     let outcome: PageAgentOutcome;
     try {
-      outcome = await runPageAgent(run, next.job, model, onEvent);
+      outcome = await runPageAgent(run, next.job, model, onEvent, modelId);
     } catch (error) {
       pool.fatal ??= { error };
       removeInFlightPage(pool, next.job.path);
@@ -866,8 +694,9 @@ const PAGE_WORKER_ATTEMPT_LIMIT = 2;
 async function runPageAgent(
   run: ActiveRepositoryRun,
   job: PendingPageJob,
-  model: BaseChatModel,
+  model: ProviderModel,
   onEvent?: (event: OpenWikiRunEvent) => void,
+  modelId?: string,
 ): Promise<PageAgentOutcome> {
   const snapshot = await captureRepositoryPageSnapshot(run, job.id);
   let skipped: PageAgentOutcome = { status: "skipped", snapshot };
@@ -879,6 +708,7 @@ async function runPageAgent(
       snapshot,
       model,
       onEvent,
+      modelId,
     );
     if (outcome.status === "submitted") return outcome;
     skipped = outcome;
@@ -917,8 +747,9 @@ async function runPageWorkerAttempt(
   run: ActiveRepositoryRun,
   job: PendingPageJob,
   snapshot: RepositoryPageSnapshot,
-  model: BaseChatModel,
+  model: ProviderModel,
   onEvent?: (event: OpenWikiRunEvent) => void,
+  modelId: string = model.modelId ?? "",
 ): Promise<PageAgentOutcome> {
   const ignore = await OpenWikiIgnore.load(run.root);
   const wikiBackend = new OpenWikiLocalShellBackend({
@@ -934,27 +765,28 @@ async function runPageWorkerAttempt(
 
   let submitted = false;
   let fatalSubmissionFailure = false;
-  const inspectClaimsTool = new DynamicStructuredTool({
+  const inspectClaimsTool: RuntimeTool = {
     name: "inspect_claims",
     description:
       "Return this page's complete current Claim set without opaque evidence versions. Use only before intentionally revising or removing otherwise-current content; stale or unresolved Claims already appear in the assignment.",
-    schema: z.object({}).strict(),
-    func: () =>
-      Promise.resolve(JSON.stringify(inspectRepositoryPageClaims(run, job.id))),
-  });
-  const submitPageTool = new DynamicStructuredTool({
+    parameters: z.toJSONSchema(z.object({}).strict()) as Record<string, unknown>,
+    execute: async () => JSON.stringify(inspectRepositoryPageClaims(run, job.id)),
+  };
+  const submitPageTool: RuntimeTool = {
     name: "submit_page",
     description:
       "Complete the assigned page after writing it. Submit only sparse Claim decisions: confirmedClaimIds for rechecked issue Claims kept unchanged, claims for revisions/additions, and retractedClaimIds for removals. Other current Claims are retained automatically. Evidence must use repo://<repository-relative-path>, optionally with #Lx-Ly.",
-    schema: ClaimReconciliationSchema,
-    func: async (reconciliation, _runManager, config) => {
+    parameters: z.toJSONSchema(ClaimReconciliationSchema) as Record<string, unknown>,
+    execute: async (reconciliation) => {
       if (submitted) {
         throw new Error("submit_page was already called for this page worker.");
       }
       try {
+        const parsed = ClaimReconciliationSchema.safeParse(reconciliation);
+        if (!parsed.success) return JSON.stringify({ status: "rejected", code: "invalid_input", message: parsed.error.message, retry: "Correct the assigned page or sparse Claim decisions and call submit_page again." });
         const result = await submitRepositoryPage(run, {
           jobId: job.id,
-          ...reconciliation,
+          ...parsed.data,
         });
         submitted = true;
         return JSON.stringify(result);
@@ -967,50 +799,31 @@ async function runPageWorkerAttempt(
             "submit_page",
             error,
             "Correct the assigned page or sparse Claim decisions and call submit_page again.",
-            (config as { toolCall?: { id?: string } } | undefined)?.toolCall
-              ?.id,
           );
         }
         fatalSubmissionFailure = true;
         throw error;
       }
     },
-  });
+  };
 
   const backend = createAgentBackend(wikiBackend);
-  const agent = createDeepAgent({
-    name: workerAgentName(job.path),
-    model,
-    tools: [inspectClaimsTool, submitPageTool],
-    backend,
-    middleware: [
-      createFilesystemMiddleware({
-        backend,
-        permissions: AGENT_FILESYSTEM_PERMISSIONS,
-        tools: PAGE_FILESYSTEM_TOOLS,
-      }),
-      NO_DELEGATION_MIDDLEWARE,
-    ],
-    skills: ["/skills/"],
-    subagents: [],
-    permissions: AGENT_FILESYSTEM_PERMISSIONS,
-    systemPrompt: createRepositoryPagePrompt(
+  const tools = [...createAgentTools(backend, "repository"), inspectClaimsTool, submitPageTool];
+  const messages = [
+    { role: "system" as const, content: createRepositoryPagePrompt(
       job,
       run.state.plan?.pages ?? [],
       run.state.language,
-    ),
-  });
+    ) },
+    { role: "user" as const, content: "Research and document the assigned page, then submit it." },
+  ];
 
   try {
     await streamWorkerTools(
-      agent,
-      [
-        {
-          role: "user",
-          content: "Research and document the assigned page, then submit it.",
-        },
-      ],
-      resolveTraceThreadId(run.state.runId),
+      model,
+      modelId,
+      messages,
+      tools,
       onEvent,
       job.path,
     );
@@ -1043,44 +856,35 @@ function emitDeferredPageWarning(
  *
  * @param agent - Fresh planner or page agent.
  * @param messages - Single worker instruction message.
- * @param traceThreadId - LangSmith thread shared by every worker of this run.
  * @param onEvent - Optional CLI event consumer.
  * @param page - Canonical page owned by a page worker, tagged onto its events.
  */
 async function streamWorkerTools(
-  agent: ReturnType<typeof createDeepAgent>,
-  messages: Array<{ role: "user"; content: string }>,
-  traceThreadId: string,
+  model: ProviderModel,
+  modelId: string,
+  messages: Array<{ role: "system" | "user"; content: string }>,
+  tools: RuntimeTool[],
   onEvent?: (event: OpenWikiRunEvent) => void,
   page?: string,
 ): Promise<void> {
-  // LangGraph copies `configurable.thread_id` into every run's metadata, which
-  // is what LangSmith groups a thread by. Safe to share across concurrent
-  // workers only because they have no checkpointer.
-  const stream = await agent.stream(
-    { messages },
-    {
-      streamMode: ["tools"],
-      subgraphs: true,
-      configurable: { thread_id: traceThreadId },
+  await runAgentLoop({
+    model,
+    modelId,
+    messages,
+    tools,
+    maxIterations: 64,
+    onEvent: (event) => {
+      if (event.type === "tool-start") {
+        onEvent?.({ type: "tool_start", call: event.name, id: event.id, input: event.input, name: event.name, ...(page ? { page } : {}) });
+      } else if (event.type === "tool-result") {
+        onEvent?.({ type: "tool_end", id: event.id, name: event.name, status: event.result.startsWith("Tool failed:") ? "error" : "finished", ...(page ? { page } : {}) });
+      }
     },
-  );
-
-  for await (const chunk of stream) {
-    const event = parseWorkerToolEvent(chunk);
-    if (!event) continue;
-    onEvent?.(
-      page !== undefined &&
-        (event.type === "tool_start" || event.type === "tool_end")
-        ? { ...event, page }
-        : event,
-    );
-    await scheduler.yield();
-  }
+  });
 }
 
 /**
- * Normalizes a DeepAgents tools-stream chunk from an approved worker tool.
+ * Normalizes a legacy worker tool event payload.
  *
  * @param chunk - Unknown streamed graph chunk.
  * @returns Bounded tool lifecycle event or `null` for narration/unknown tools.

@@ -10,7 +10,6 @@ export {
   getNextStepAfterProvider,
   hydrateRunModeConfig,
   needsCredentialSetup,
-  needsLangSmithStep,
   nextSetupStep,
   orderedSetupSteps,
   resolveStepStatus,

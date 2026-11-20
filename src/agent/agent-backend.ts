@@ -3,7 +3,7 @@ import {
   FilesystemBackend,
   type FilesystemPermission,
   type GlobResult,
-} from "deepagents";
+} from "./native-filesystem.js";
 import {
   openWikiConversationHistoryDir,
   openWikiSkillsDir,
@@ -11,7 +11,7 @@ import {
 import { OpenWikiLocalShellBackend } from "./docs-only-backend.js";
 
 /**
- * DeepAgents' fixed history-offload mount.
+ * conversation history mount.
  */
 export const CONVERSATION_HISTORY_MOUNT = "/conversation_history/";
 
@@ -64,7 +64,7 @@ export const AGENT_FILESYSTEM_PERMISSIONS: FilesystemPermission[] = [
  */
 interface AgentBackendMountOptions {
   /**
-   * Directory used for DeepAgents conversation-history offload.
+   * Directory used for conversation-history storage.
    */
   historyDir?: string;
 
@@ -106,7 +106,7 @@ export function createAgentBackend(
  */
 class OpenWikiCompositeBackend extends CompositeBackend {
   /**
-   * Expands a glob while handling DeepAgents' recoverable recursion overflow.
+   * Expands a glob while handling recoverable recursion overflow.
    *
    * @param pattern - Glob pattern supplied by the worker.
    * @param path - Virtual search root.
@@ -115,6 +115,7 @@ class OpenWikiCompositeBackend extends CompositeBackend {
   override async glob(pattern: string, path = "/"): Promise<GlobResult> {
     if (exceedsGlobBraceNesting(pattern)) {
       return {
+        files: [],
         error:
           "Glob pattern nesting is too deep. Retry with a simpler pattern.",
       };
@@ -128,6 +129,7 @@ class OpenWikiCompositeBackend extends CompositeBackend {
         error.message === "Maximum call stack size exceeded"
       ) {
         return {
+          files: [],
           error:
             "Glob search was too broad. Retry with a narrower path or pattern.",
         };

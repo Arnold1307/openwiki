@@ -1,4 +1,4 @@
-import type { BackendProtocolV2, FileInfo } from "deepagents";
+import type { FileInfo, OpenWikiBackend } from "../agent/backend-types.js";
 import path from "node:path";
 import type { OpenWikiOutputMode } from "../agent/types.js";
 import { extractMermaidFences } from "./fences.js";
@@ -44,7 +44,7 @@ export interface WikiMermaidReport {
  * byte unchanged, so this creates no diff noise.
  */
 export async function validateWikiMermaid(
-  backend: BackendProtocolV2,
+  backend: OpenWikiBackend,
   outputMode: OpenWikiOutputMode,
 ): Promise<WikiMermaidReport> {
   const root = outputMode === "local-wiki" ? "/" : "/openwiki";
@@ -84,7 +84,7 @@ export async function validateWikiMermaid(
  * list rather than throwing, matching the index middleware's tolerance.
  */
 async function listMarkdownFiles(
-  backend: BackendProtocolV2,
+  backend: OpenWikiBackend,
   directoryPath: string,
 ): Promise<string[]> {
   const result = await backend.ls(directoryPath);
@@ -117,7 +117,7 @@ async function listMarkdownFiles(
  * Reads a text file from the backend or throws an actionable error.
  */
 async function readText(
-  backend: BackendProtocolV2,
+  backend: OpenWikiBackend,
   filePath: string,
 ): Promise<string> {
   const result = await backend.readRaw(filePath);

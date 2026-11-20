@@ -13,18 +13,19 @@ import {
   type ReadRawResult,
   type ReadResult,
   type WriteResult,
-} from "deepagents";
+  type FilesystemPermission,
+} from "./native-filesystem.js";
 import { OPEN_WIKI_DIR } from "../config/constants.js";
 import { OPENWIKI_IGNORE_FILE, OpenWikiIgnore } from "./openwiki-ignore.js";
 import type { OpenWikiOutputMode } from "./types.js";
 
 /**
- * ToolMessage metadata key under which a successful mutation records the path it wrote.
+ * Tool result metadata key under which a successful mutation records the path it wrote.
  */
 export const MUTATION_PATH_METADATA_KEY = "openwikiMutationPath";
 
 /**
- * Options for {@link OpenWikiLocalShellBackend}, extending the deepagents shell backend options.
+ * Options for {@link OpenWikiLocalShellBackend}.
  */
 type OpenWikiBackendOptions = LocalShellBackendOptions & {
   /**
@@ -148,7 +149,7 @@ function referencesClaimsState(command: string): boolean {
 /**
  * Process-local serialization of file operations, keyed by host path.
  *
- * LangChain runs every tool call of one model turn concurrently, and the
+ * The agent runtime may run tool calls from one model turn concurrently, and the
  * upstream filesystem backend neither locks nor writes atomically: `write`
  * truncates before writing and `edit` is a read-modify-write. Overlapping
  * operations on one page can leave a stale tail, drop an edit, or let a read
@@ -196,7 +197,7 @@ async function withPathOperation<T>(
  * Filesystem/shell backend that enforces OpenWiki's access boundaries for the
  * doc-generation agent.
  *
- * It wraps the deepagents `LocalShellBackend` and layers on five independent
+ * It provides the restricted repository shell and layers on five independent
  * constraints:
  *
  * 1. Shell confinement: shell `execute` is restricted to a small allowlist because
@@ -419,6 +420,7 @@ export class OpenWikiLocalShellBackend extends LocalShellBackend {
   ): Promise<GlobResult> {
     if (isBroadRootGlob(pattern, searchPath)) {
       return {
+        files: [],
         error:
           "Unbounded root globbing is disabled. Use ls at the repository root, then targeted glob or grep calls by directory and extension.",
       };
@@ -426,6 +428,7 @@ export class OpenWikiLocalShellBackend extends LocalShellBackend {
 
     if (targetsGitMetadata(pattern, searchPath)) {
       return {
+        files: [],
         error:
           "Git metadata is private repository state and is unavailable to glob. Use `git rev-parse HEAD` when the current commit is needed.",
       };
@@ -446,6 +449,7 @@ export class OpenWikiLocalShellBackend extends LocalShellBackend {
     } catch (error) {
       if (isWorktreeGitScandirError(error)) {
         return {
+          files: [],
           error:
             "Glob could not traverse this Git worktree safely. Use ls at the repository root, then search a specific source directory.",
         };
@@ -676,7 +680,7 @@ export class OpenWikiLocalShellBackend extends LocalShellBackend {
 }
 
 /**
- * Carries a successful mutation's file path into the ToolMessage metadata used by the validator.
+ * Carries a successful mutation's file path into the tool result metadata used by validation.
  */
 function markMutation<Result extends WriteResult | EditResult | DeleteResult>(
   result: Result,

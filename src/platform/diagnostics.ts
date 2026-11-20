@@ -26,7 +26,7 @@ import {
  * response body that could contain a credential must pass through here first.
  * It removes (1) the exact values of secrets currently set in the environment
  * and (2) anything matching known key/token shapes (OpenAI/OpenRouter `sk-…`,
- * `Bearer …`, LangSmith `ls…`, and "Incorrect API key provided: …" phrasing).
+ * `Bearer …`, and "Incorrect API key provided: …" phrasing).
  */
 export function sanitizeDiagnosticText(value: string): string {
   let sanitized = value;
@@ -52,7 +52,6 @@ export function sanitizeDiagnosticText(value: string): string {
     OPENROUTER_API_KEY_ENV_KEY,
     "AZURE_CLIENT_SECRET",
     "AZURE_CLIENT_CERTIFICATE_PASSWORD",
-    "LANGSMITH_API_KEY",
   ]) {
     const secret = process.env[key];
 
@@ -68,8 +67,7 @@ export function sanitizeDiagnosticText(value: string): string {
     )
     .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gu, "Bearer [REDACTED]")
     .replace(/\bsk-or-v1-[A-Za-z0-9_-]+/gu, "[REDACTED:OPENROUTER_API_KEY]")
-    .replace(/\bsk-[A-Za-z0-9_-]+/gu, "[REDACTED:API_KEY]")
-    .replace(/\bls[v_][A-Za-z0-9_-]+/gu, "[REDACTED:LANGSMITH_API_KEY]");
+    .replace(/\bsk-[A-Za-z0-9_-]+/gu, "[REDACTED:API_KEY]");
 }
 
 /**

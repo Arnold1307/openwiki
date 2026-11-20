@@ -40,14 +40,12 @@ import {
   needsAwsCredentialRepair,
   needsBaseUrlStep,
   needsCredentialStep,
-  needsLangSmithStep,
   needsRegionStep,
   needsSecretKeyStep,
   resolveStepStatus,
 } from "./steps.js";
 import { getCredentialSetupDetail } from "./format.js";
 import type {
-  LangsmithWorkspaceDraft,
   PromptStep,
   SourceSetupOption,
   SourceSetupState,
@@ -129,9 +127,6 @@ export interface InitSetupViewProps {
   /** Reasoning effort selected this session, or null when not collected. */
   reasoningEffort?: string | null;
 
-  /** LangSmith key entered this session, or null when none was typed. */
-  langSmithKey: string | null;
-
   /** The onboarding config as the wizard has edited it so far. */
   onboardingConfig: OpenWikiOnboardingConfig;
 
@@ -170,18 +165,6 @@ export interface InitSetupViewProps {
 
   /** True while the user is entering a custom model ID. */
   isCustomModelInput: boolean;
-
-  /** The LangSmith workspace currently being added or edited, or null. */
-  langsmithDraft: LangsmithWorkspaceDraft | null;
-
-  /** Selection cursor for the LangSmith region menu. */
-  langsmithRegionSelectionIndex: number;
-
-  /** Selection cursor for the LangSmith workspaces menu. */
-  langsmithWorkspaceSelectionIndex: number;
-
-  /** LangSmith workspaces as the wizard has edited them. */
-  langsmithWorkspaces: LangsmithWorkspaceDraft[];
 
   /** Selection cursor for the model menu. */
   modelSelectionIndex: number;
@@ -275,7 +258,6 @@ export function InitSetupView({
   modelId,
   modelIdOverride,
   reasoningEffort = null,
-  langSmithKey,
   onboardingConfig,
   copied,
   input,
@@ -289,10 +271,6 @@ export function InitSetupView({
   cronModeSelectionIndex,
   finalSelectionIndex,
   isCustomModelInput,
-  langsmithDraft,
-  langsmithRegionSelectionIndex,
-  langsmithWorkspaceSelectionIndex,
-  langsmithWorkspaces,
   modelSelectionIndex,
   reasoningEffortSelectionIndex = 0,
   powerModeSelectionIndex,
@@ -323,8 +301,7 @@ export function InitSetupView({
     needsBaseUrlStep(provider) ||
     needsRegionStep(provider) ||
     (modelIdOverride === null &&
-      process.env[OPENWIKI_MODEL_ID_ENV_KEY] === undefined) ||
-    needsLangSmithStep();
+      process.env[OPENWIKI_MODEL_ID_ENV_KEY] === undefined);
   const apiKeyEnvKey = getProviderApiKeyEnvKey(provider);
   const primaryCredentialStep = credentialStep(provider, authMode);
   const projectEnvKey = getProviderProjectEnvKey(provider);
@@ -565,31 +542,6 @@ export function InitSetupView({
               }
             />
           ) : null}
-          <SetupStep
-            label="LangSmith"
-            state={resolveStepStatus(
-              "langsmith",
-              step,
-              // Answered when a key exists (this session or in env) or a tracing
-              // decision was recorded; !needsLangSmithStep() covers both, so a
-              // prior decline reads done instead of resetting to optional.
-              langSmithKey !== null || !needsLangSmithStep(),
-              "optional",
-            )}
-            detail={
-              langSmithKey !== null
-                ? langSmithKey.length > 0
-                  ? "configured"
-                  : "skipped"
-                : process.env.LANGSMITH_API_KEY
-                  ? "configured"
-                  : // A recorded tracing decision with no key means the step was
-                    // seen and declined on an earlier run, so it reads "skipped".
-                    process.env.LANGCHAIN_TRACING_V2 !== undefined
-                    ? "skipped"
-                    : "not set"
-            }
-          />
           {selectedMode === "personal" ? (
             <SetupStep
               label="Wiki scope"
@@ -664,12 +616,6 @@ export function InitSetupView({
               input={input}
               inputDisplayWidth={inputDisplayWidth}
               isCustomModelInput={isCustomModelInput}
-              langsmithDraft={langsmithDraft}
-              langsmithRegionSelectionIndex={langsmithRegionSelectionIndex}
-              langsmithWorkspaceSelectionIndex={
-                langsmithWorkspaceSelectionIndex
-              }
-              langsmithWorkspaces={langsmithWorkspaces}
               modelSelectionIndex={modelSelectionIndex}
               reasoningEffortOptions={reasoningEffortOptions}
               reasoningEffortSelectionIndex={reasoningEffortSelectionIndex}

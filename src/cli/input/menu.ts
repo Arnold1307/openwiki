@@ -37,11 +37,6 @@ export const slashCommandOptions: SlashCommandOption[] = [
     label: "/api-key",
   },
   {
-    description: "Set or clear the LangSmith API key",
-    id: "langsmith-key",
-    label: "/langsmith-key",
-  },
-  {
     description: "Run an initial OpenWiki documentation pass",
     id: "init",
     label: "/init",

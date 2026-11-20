@@ -462,26 +462,6 @@ export function ChatInput({
       return;
     }
 
-    if (option.id === "langsmith-key") {
-      if (args && args.length > 0) {
-        setError(
-          "Use the masked prompt for LangSmith keys; do not pass keys inline.",
-        );
-        return;
-      }
-
-      setError(null);
-      setNotice("Paste your LangSmith API key, or press Enter empty to clear.");
-      setSecretInputMode({
-        envKey: "LANGSMITH_API_KEY",
-        kind: "langsmith-key",
-        label: "LangSmith API key",
-      });
-      setInputState({ cursorPosition: 0, value: "" });
-      setMenuState({ kind: "none" });
-      return;
-    }
-
     if (option.id === "init" || option.id === "update") {
       resetInput();
       onCommandRun(option.id, args);
@@ -498,7 +478,7 @@ export function ChatInput({
     if (option.id === "help") {
       resetInput();
       setNotice(
-        "Slash commands: /provider, /model, /effort, /api-key, /langsmith-key, /init, /update, /clear, /help, /exit. Use arrows to select.",
+        "Slash commands: /provider, /model, /effort, /api-key, /init, /update, /clear, /help, /exit. Use arrows to select.",
       );
       return;
     }
@@ -698,17 +678,9 @@ export function ChatInput({
     setNotice(null);
 
     try {
-      if (secretInputMode.kind === "langsmith-key") {
-        await saveOpenWikiEnv({
-          LANGCHAIN_PROJECT: nextValue.length > 0 ? "openwiki" : "",
-          LANGCHAIN_TRACING_V2: nextValue.length > 0 ? "true" : "false",
-          LANGSMITH_API_KEY: nextValue,
-        });
-      } else {
-        await saveOpenWikiEnv({
-          [secretInputMode.envKey]: nextValue,
-        });
-      }
+      await saveOpenWikiEnv({
+        [secretInputMode.envKey]: nextValue,
+      });
 
       const savedLabel = secretInputMode.label;
       resetInput();
@@ -780,9 +752,6 @@ export function ChatInput({
           <Text>
             Saving to <Text color="cyan">{secretInputMode.envKey}</Text>
           </Text>
-          {secretInputMode.kind === "langsmith-key" ? (
-            <Text color="gray">Press Enter empty to clear LangSmith.</Text>
-          ) : null}
         </Box>
       ) : menuState.kind !== "none" ? (
         <SlashMenu

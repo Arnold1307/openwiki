@@ -52,7 +52,6 @@ import {
   resolveProviderLocation,
   resolveProviderRegion,
   resolvePageConcurrency,
-  resolveTraceThreadId,
   resolveProviderRetryAttempts,
   resolveStreamIdleTimeout,
   resolveStreamIdleTimeoutForProvider,
@@ -281,26 +280,6 @@ describe("resolveProviderBaseUrl", () => {
 
   test("returns undefined for a provider with no default and no override", () => {
     expect(resolveProviderBaseUrl("openai", {})).toBeUndefined();
-  });
-});
-
-describe("resolveTraceThreadId", () => {
-  test("defaults to the run id", () => {
-    expect(resolveTraceThreadId("run-1", {})).toBe("run-1");
-  });
-
-  test("prefers a trimmed OPENWIKI_TRACE_THREAD_ID", () => {
-    expect(
-      resolveTraceThreadId("run-1", {
-        OPENWIKI_TRACE_THREAD_ID: " ingest-a1 ",
-      }),
-    ).toBe("ingest-a1");
-  });
-
-  test("ignores a blank override", () => {
-    expect(
-      resolveTraceThreadId("run-1", { OPENWIKI_TRACE_THREAD_ID: "   " }),
-    ).toBe("run-1");
   });
 });
 

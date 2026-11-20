@@ -62,13 +62,11 @@ import type {
 import {
   ONBOARDING_TEMPLATES,
   RUN_MODE_OPTIONS,
-  LANGSMITH_REGION_OPTIONS,
   SOURCE_OPTIONS,
   CRON_FIELD_LABELS,
   FINAL_OPTIONS,
 } from "./constants.js";
 import type { OpenWikiRunMode } from "../../cli/commands.js";
-import type { LangSmithRegion } from "../../connectors/sources/langsmith/setup.js";
 import type { ConnectorId } from "../../connectors/types.js";
 
 export function needsCredentialSetup(
@@ -85,8 +83,7 @@ export function needsCredentialSetup(
     needsBaseUrlStep(provider) ||
     needsRegionStep(provider) ||
     (modelIdOverride === null &&
-      process.env[OPENWIKI_MODEL_ID_ENV_KEY] === undefined) ||
-    needsLangSmithStep();
+      process.env[OPENWIKI_MODEL_ID_ENV_KEY] === undefined);
 
   if (needsCredentials) {
     return true;
@@ -163,8 +160,7 @@ export function credentialStep(
 
 /**
  * Every managed env key the wizard lets you set for a provider, in checklist
- * order: the provider selection, its credential keys, the model, and the
- * LangSmith tracing key. Used to detect which of them a shell export is
+ * order: the provider selection, its credential keys, and the model. Used to detect which of them a shell export is
  * currently shadowing (a shell var wins at runtime and would silently override
  * the choice made here). Returns key names only, never values.
  */
@@ -182,7 +178,6 @@ export function getWizardManagedEnvKeys(provider: OpenWikiProvider): string[] {
     getProviderRegionEnvKey(provider),
     OPENWIKI_MODEL_ID_ENV_KEY,
     OPENWIKI_REASONING_EFFORT_ENV_KEY,
-    "LANGSMITH_API_KEY",
   ].filter((key): key is string => key !== undefined);
 }
 
@@ -277,11 +272,9 @@ export function orderedSetupSteps(
   if (!providerHasFixedModel(provider)) {
     steps.push("model");
   }
-  steps.push("langsmith");
-
   // Personal mode's template is fixed by the run mode, so it skips the
   // Code/Personal chooser and walks straight into the wiki brief. Only code
-  // mode needs a spine step after langsmith (repo confirmation).
+  // mode needs a repo confirmation step.
   if (mode === "code") {
     steps.push("code-repo-confirm");
   }
@@ -358,23 +351,6 @@ export function needsRegionStep(provider: OpenWikiProvider): boolean {
   }
 
   return !isRegionConfigured(provider);
-}
-
-/**
- * Whether the optional LangSmith tracing step still needs to be shown.
- *
- * The step is optional, so "answered" must include skipping it. Skipping does
- * not persist `LANGSMITH_API_KEY` — `saveOpenWikiEnv` strips empty values, so
- * the key is simply absent afterwards. What the step always records instead is
- * `LANGCHAIN_TRACING_V2` (`"false"` on skip, `"true"` when a key is entered),
- * which survives because it is non-empty. So the step is unanswered only when
- * neither a key is present (e.g. from a shell export) nor a tracing decision
- * has been recorded.
- */
-export function needsLangSmithStep(
-  env: NodeJS.ProcessEnv = process.env,
-): boolean {
-  return !env.LANGSMITH_API_KEY && env.LANGCHAIN_TRACING_V2 === undefined;
 }
 
 export function isRegionConfigured(provider: OpenWikiProvider): boolean {
@@ -469,10 +445,6 @@ export function getInitialStep(
     process.env[OPENWIKI_MODEL_ID_ENV_KEY] === undefined
   ) {
     return "model";
-  }
-
-  if (needsLangSmithStep()) {
-    return "langsmith";
   }
 
   if (mode === "code" && !isOnboardingComplete(onboardingConfig)) {
@@ -618,10 +590,6 @@ export function getNextStepAfterRegion(
     return "model";
   }
 
-  if (needsLangSmithStep()) {
-    return "langsmith";
-  }
-
   if (mode === "code" && !isOnboardingComplete(onboardingConfig)) {
     return "code-repo-confirm";
   }
@@ -689,20 +657,6 @@ export async function hydrateRunModeConfig(
 export function getRunModeSelectionIndex(mode: OpenWikiRunMode): number {
   const index = RUN_MODE_OPTIONS.findIndex((option) => option.id === mode);
   return index === -1 ? 0 : index;
-}
-
-export function getLangsmithRegionSelectionIndex(
-  region: LangSmithRegion,
-): number {
-  const index = LANGSMITH_REGION_OPTIONS.findIndex(
-    (option) => option.id === region,
-  );
-  return index === -1 ? 0 : index;
-}
-
-export function getLangsmithRegionLabel(region: LangSmithRegion): string {
-  const option = LANGSMITH_REGION_OPTIONS.find((item) => item.id === region);
-  return option ? `${option.name} (${option.host})` : region;
 }
 
 export function getRunModeName(mode: OpenWikiRunMode): string {

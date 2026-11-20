@@ -410,7 +410,7 @@ function readOwnOriginTag(error: unknown): ErrorOriginTag | undefined {
  * chain. Mirrors {@link classifyError}: it walks the chain nearest-first and returns
  * the first link whose tag names an owned family (its class, detail, and throw-site
  * stage), so an owned error re-wrapped by a framework keeps its class instead of
- * decaying into `agent_error`. LangChain's `MiddlewareError`, for one, copies the
+ * decaying into `agent_error`. Middleware error wrappers can copy the
  * inner message onto a fresh wrapper but strands the tag on `.cause`, so a top-only
  * read would lose the owned class. When no link owns a class, the nearest stage-only
  * tag is returned so a plain stage bracket still reports its stage.
@@ -481,7 +481,7 @@ export async function inStage<T>(
 
 /**
  * Synchronous {@link inStage}, for the synchronous build steps (`createModel`,
- * `createDeepAgent`) that can throw before any promise is created.
+ * agent construction that can throw before any promise is created.
  */
 export function inStageSync<T>(
   stage: TelemetryErrorStage,
@@ -552,7 +552,7 @@ export function safeConstructorName(value: unknown): string | undefined {
 
 /**
  * The `.name` property of `value`, but only if it is a bare identifier; otherwise
- * undefined. This is the identity a framework deliberately sets: LangChain's
+ * undefined. This is the identity a framework may deliberately set:
  * `MiddlewareError.wrap` copies the inner error's `.name` up onto the wrapper, so
  * reading `.name` recovers the real failure's identity even when `constructor.name`
  * reports the envelope class. Gated by the shared {@link isSafeErrorIdentifier}.
@@ -573,7 +573,7 @@ export function safeErrorName(value: unknown): string | undefined {
 /**
  * The most specific allowlisted identifier for a single chain link, or undefined.
  * Reconciles the two identity sources: a link's own `.name`, which a framework like
- * LangChain's `MiddlewareError` deliberately sets to the inner error's name, and its
+ * Middleware wrappers may deliberately set to the inner error's name, and their
  * `constructor.name`. The `.name` wins because it is the identity a wrapper copies up
  * (e.g. `AI_APICallError` on a `MiddlewareError`), except when it is the bare base
  * `"Error"`: an `Error` subclass that never sets `this.name` inherits `"Error"`, which
@@ -632,7 +632,7 @@ export function innermostErrorName(error: unknown): string | undefined {
  * signal is a disguised provider error and the raw classification wins over the tag
  * (see {@link streamOpenDisguisesProvider}). For the residual `agent_error` bucket the
  * detail is instead the innermost error's own name, the one signal that bucket
- * carries, read from the cause chain so a framework envelope like LangChain's
+ * carries, read from the cause chain so a framework envelope
  * `MiddlewareError` does not collapse every root cause to the wrapper's name. The
  * detail is normalized against its family's allowlist (or the identifier allowlist for
  * `agent_error`), so an off-list value is dropped rather than emitted. Never leaks the

@@ -1,8 +1,5 @@
-import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
-import type { MessageContent } from "@langchain/core/messages";
-import { HumanMessage, SystemMessage } from "@langchain/core/messages";
-import type { BackendProtocolV2, FileInfo } from "deepagents";
-import { createMiddleware } from "langchain";
+import type { ProviderModel } from "../model/types.js";
+import type { FileInfo, OpenWikiBackend } from "./backend-types.js";
 import path from "node:path";
 import { getErrorMessage } from "../platform/diagnostics.js";
 import { getPrimaryLanguageSubtag } from "../platform/language.js";
@@ -27,10 +24,8 @@ const EXCLUDED_FILES = new Set(["index.md", "log.md", "INSTRUCTIONS.md"]);
  * The agent is driven with `messages`-mode streaming, which captures every LLM
  * token in the graph, including the translation calls this middleware makes in
  * `beforeAgent`. Tagging those calls keeps their raw translated Markdown out of
- * the token stream so it never scrolls past in the TUI; LangGraph honors this tag
- * (and the bare `nostream`) when deciding which runs to surface.
+ * the token stream so it never scrolls past in the TUI.
  */
-const NOSTREAM_TAG = "langsmith:nostream";
 
 /**
  * Single friendly line shown once while the wiki is being translated, in place
@@ -104,7 +99,7 @@ export function resolveTranslationPlan(
 }
 
 /**
- * Creates middleware that brings every existing wiki page into the run's target
+ * Brings every existing wiki page into the run's target
  * language before the agent runs.
  *
  * OpenWiki treats the wiki's language as persisted state, so an incremental
@@ -126,7 +121,7 @@ export function resolveTranslationPlan(
  * (already secret-redacted) summary to stderr.
  *
  * The raw translated Markdown is kept out of the token stream (see
- * {@link NOSTREAM_TAG}); `onStatus` is called once instead, with a short line
+ * so `onStatus` is called once instead, with a short line
  * announcing the pass, so the user sees progress without the flood of tokens. It
  * fires only when at least one page is actually translated, so a no-op marker
  * sweep stays silent, and defaults to writing the line to stderr.
@@ -137,12 +132,12 @@ export function resolveTranslationPlan(
  * @param plan - Resolved language transition.
  * @param onWarning - Sanitized warning sink.
  * @param onStatus - User-visible status sink.
- * @returns Translation middleware.
+ * @returns Promise that resolves when translation pass completes.
  */
-export function createWikiTranslationMiddleware(
-  backend: BackendProtocolV2,
+export function translateWikiForRun(
+  backend: OpenWikiBackend,
   outputMode: OpenWikiOutputMode,
-  model: BaseChatModel,
+  model: ProviderModel,
   plan: TranslationPlan,
   onWarning: (message: string) => void = (message) => {
     process.stderr.write(`${message}\n`);
@@ -150,20 +145,8 @@ export function createWikiTranslationMiddleware(
   onStatus: (message: string) => void = (message) => {
     process.stderr.write(`${message}\n`);
   },
-) {
-  return createMiddleware({
-    name: "OpenWikiTranslationMiddleware",
-    beforeAgent: async () => {
-      await translateWiki(
-        backend,
-        outputMode,
-        model,
-        plan,
-        onWarning,
-        onStatus,
-      );
-    },
-  });
+): Promise<void> {
+  return translateWiki(backend, outputMode, model, plan, onWarning, onStatus);
 }
 
 /**
@@ -185,9 +168,9 @@ export function createWikiTranslationMiddleware(
  * @param onStatus - User-visible status sink.
  */
 async function translateWiki(
-  backend: BackendProtocolV2,
+  backend: OpenWikiBackend,
   outputMode: OpenWikiOutputMode,
-  model: BaseChatModel,
+  model: ProviderModel,
   plan: TranslationPlan,
   onWarning: (message: string) => void,
   onStatus: (message: string) => void,
@@ -264,8 +247,8 @@ async function translateWiki(
  * @param plan - Resolved language transition.
  */
 async function translatePage(
-  backend: BackendProtocolV2,
-  model: BaseChatModel,
+  backend: OpenWikiBackend,
+  model: ProviderModel,
   filePath: string,
   original: string,
   plan: TranslationPlan,
@@ -304,7 +287,7 @@ async function translatePage(
  * than swallow it.
  */
 async function markPending(
-  backend: BackendProtocolV2,
+  backend: OpenWikiBackend,
   filePath: string,
   content: string,
   target: string,
@@ -323,9 +306,8 @@ async function markPending(
 /**
  * Asks the model to translate a Markdown document, returning its raw text.
  *
- * The call is tagged with {@link NOSTREAM_TAG} so its tokens are excluded from
- * the agent's `messages` stream: the translated Markdown is written back through
- * the backend rather than streamed to the TUI token by token.
+ * The translated Markdown is written back through the backend rather than
+ * streamed to the TUI token by token.
  *
  * @param model - Translation model.
  * @param content - Markdown to translate.
@@ -334,27 +316,27 @@ async function markPending(
  * @returns Raw translated Markdown.
  */
 async function translateMarkdown(
-  model: BaseChatModel,
+  model: ProviderModel,
   content: string,
   from: string,
   to: string,
 ): Promise<string> {
-  const response = await model.invoke(
-    [
-      new SystemMessage(buildTranslationPrompt(from, to)),
-      new HumanMessage(content),
+  const response = await model.generate({
+    modelId: model.modelId ?? "",
+    messages: [
+      { role: "system", content: buildTranslationPrompt(from, to) },
+      { role: "user", content },
     ],
-    { tags: [NOSTREAM_TAG] },
-  );
+  });
   // A response cut off at the output-token limit still carries text, but only
   // the start of the page. Writing it would silently drop the rest of the page
   // and clear its retry marker, so treat it as a failed translation instead.
-  if (stoppedAtOutputTokenLimit(response.response_metadata)) {
+  if (response.finishReason === "length" || response.finishReason === "max_tokens") {
     throw new Error(
       "the model reached its output-token limit before finishing the translation",
     );
   }
-  return extractText(response.content);
+  return response.message.content;
 }
 
 /**
@@ -367,7 +349,7 @@ const OUTPUT_TOKEN_LIMIT_STOP_REASONS = new Set(["length", "max_tokens"]);
 /**
  * Reports whether a model response was cut off at its output-token limit.
  *
- * LangChain chat models surface the provider's stop reason in
+ * Provider adapters surface the provider's stop reason in
  * `response_metadata` under provider-specific keys, and the OpenAI Responses API
  * reports it as `incomplete_details.reason`.
  *
@@ -458,24 +440,29 @@ function describeLanguage(tag: string): string {
 /**
  * Flattens model message content into plain text, joining any content blocks.
  */
-function extractText(content: MessageContent): string {
+function extractText(content: unknown): string {
   if (typeof content === "string") return content;
-  return content
-    .map((block) =>
+  if (!Array.isArray(content)) return "";
+  return (content as unknown[])
+    .map((block: unknown) =>
       typeof block === "string"
         ? block
-        : block.type === "text"
+        : isRecord(block) && block.type === "text" && typeof block.text === "string"
           ? block.text
           : "",
     )
     .join("");
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 /**
  * Recursively collects visible, translatable Markdown files under a directory.
  */
 async function collectMarkdownFiles(
-  backend: BackendProtocolV2,
+  backend: OpenWikiBackend,
   directoryPath: string,
 ): Promise<string[]> {
   const result = await backend.ls(directoryPath);
@@ -505,7 +492,7 @@ async function collectMarkdownFiles(
  * Reads a text file from the backend or throws an actionable error.
  */
 async function readText(
-  backend: BackendProtocolV2,
+  backend: OpenWikiBackend,
   filePath: string,
 ): Promise<string> {
   const result = await backend.readRaw(filePath);

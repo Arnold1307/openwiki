@@ -1,7 +1,3 @@
-import {
-  DynamicStructuredTool,
-  type StructuredToolInterface,
-} from "@langchain/core/tools";
 import { constants as fsConstants } from "node:fs";
 import { lstat, open, readdir, stat } from "node:fs/promises";
 import path from "node:path";
@@ -26,10 +22,25 @@ import type {
   ConnectorIngestResult,
   ConnectorRuntime,
 } from "./types.js";
+import type { RuntimeTool } from "../model/types.js";
+
+function createTool(options: {
+  name: string;
+  description: string;
+  schema: Record<string, unknown>;
+  func: (input: Record<string, unknown>) => Promise<string>;
+}): RuntimeTool {
+  return {
+    name: options.name,
+    description: options.description,
+    parameters: options.schema,
+    execute: options.func,
+  };
+}
 
 export function createOpenWikiConnectorTools(
   outputMode: OpenWikiOutputMode = "local-wiki",
-): StructuredToolInterface[] {
+): RuntimeTool[] {
   // Connector tools perform credentialed external fetches (Gmail, Slack, X, ...)
   // and write raw data under the OpenWiki home. They are a personal/local-wiki
   // capability: a code-mode run documents a codebase and must never be handed
@@ -40,7 +51,7 @@ export function createOpenWikiConnectorTools(
   }
 
   return [
-    new DynamicStructuredTool({
+    createTool({
       name: "openwiki_list_connectors",
       description:
         "List built-in OpenWiki connectors, their backends, required env var names, config paths, and raw data paths. Secret values are never returned.",
@@ -51,7 +62,7 @@ export function createOpenWikiConnectorTools(
       } as const,
       func: async () => stringifyToolResult(await listConnectors()),
     }),
-    new DynamicStructuredTool({
+    createTool({
       name: "openwiki_list_mcp_tools",
       description: `List live MCP tools for a configured MCP connector and write discovery under ${openWikiConnectorsDisplayPath}/<id>/raw. Input: {"connectorId":"notion"}. Use exact returned tool names.`,
       schema: {
@@ -70,7 +81,7 @@ export function createOpenWikiConnectorTools(
           await listMcpToolsForConnector(getConnectorId(input, "connectorId")),
         ),
     }),
-    new DynamicStructuredTool({
+    createTool({
       name: "openwiki_call_mcp_tool",
       description: `Call one exact discovered read-only MCP tool and write the result under ${openWikiConnectorsDisplayPath}/<id>/raw. Input: {"connectorId":"notion","toolName":"exact_tool_name","args":{"query":"Applied AI"}}.`,
       schema: {
@@ -100,7 +111,7 @@ export function createOpenWikiConnectorTools(
           ),
         ),
     }),
-    new DynamicStructuredTool({
+    createTool({
       name: "openwiki_ingest_connector",
       description: `Run deterministic ingestion for one built-in connector and write raw data/manifests under ${openWikiConnectorsDisplayPath}/<id>/raw. Input: {"connectorId":"x","streams":["bookmarks"],"limit":1}.`,
       schema: {
@@ -137,7 +148,7 @@ export function createOpenWikiConnectorTools(
           ),
         ),
     }),
-    new DynamicStructuredTool({
+    createTool({
       name: "openwiki_ingest_all_connectors",
       description:
         "Run deterministic ingestion for all configured built-in connectors. Connectors that are not configured or enabled are skipped.",
@@ -148,7 +159,7 @@ export function createOpenWikiConnectorTools(
       } as const,
       func: async () => stringifyToolResult(await ingestAllConnectors()),
     }),
-    new DynamicStructuredTool({
+    createTool({
       name: "openwiki_list_raw_items",
       description: `List raw files for a connector under ${openWikiConnectorsDisplayPath}/<id>/raw. Input: {"connectorId":"x"}.`,
       schema: {
@@ -161,7 +172,6 @@ export function createOpenWikiConnectorTools(
               "git-repo",
               "google",
               "hackernews",
-              "langsmith",
               "notion",
               "slack",
               "web-search",
@@ -177,7 +187,7 @@ export function createOpenWikiConnectorTools(
           await listRawItems(getConnectorId(input, "connectorId")),
         ),
     }),
-    new DynamicStructuredTool({
+    createTool({
       name: "openwiki_read_raw_item",
       description: `Read a raw connector file by connector ID and relative path. Only files inside ${openWikiConnectorsDisplayPath}/<id>/raw are allowed. Input: {"connectorId":"x","path":"2026-.../bookmarks.json","maxBytes":50000}.`,
       schema: {
@@ -190,7 +200,6 @@ export function createOpenWikiConnectorTools(
               "git-repo",
               "google",
               "hackernews",
-              "langsmith",
               "notion",
               "slack",
               "web-search",

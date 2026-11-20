@@ -31,7 +31,7 @@ export interface SecretInputMode {
   /**
    * Which secret is being captured, so the handler knows how to persist it.
    */
-  kind: "api-key" | "langsmith-key";
+  kind: "api-key";
 
   /**
    * Human-readable label shown in the masked prompt.
@@ -41,8 +41,7 @@ export interface SecretInputMode {
   /**
    * The provider the key belongs to, for provider-scoped secrets.
    *
-   * @default undefined - the secret is not provider-scoped (e.g. a LangSmith
-   * key), so no provider is associated.
+   * @default undefined - the secret is not provider-scoped.
    */
   provider?: OpenWikiProvider;
 }
@@ -69,7 +68,6 @@ export type SlashCommandId =
   | "exit"
   | "help"
   | "init"
-  | "langsmith-key"
   | "model"
   | "provider"
   | "update";

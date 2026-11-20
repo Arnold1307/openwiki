@@ -41,7 +41,7 @@ export const CODEX_RESPONSES_LITE_HEADER =
 
 /**
  * Adapts requests for the ChatGPT-backed Codex endpoint at the final fetch
- * boundary. LangChain supplies its own user agent after merging configured
+ * boundary. The model client supplies its own user agent after merging configured
  * headers, while Luna is exposed only to the Codex request identity and uses
  * the Responses Lite request constraints.
  */
@@ -66,7 +66,7 @@ export function createCodexFetch(
 
         let changed = false;
 
-        // The ChatGPT-backed Codex endpoint rejects this LangChain Responses
+        // The ChatGPT-backed Codex endpoint rejects this Responses
         // option for GPT-5.6 models. Strip it at the final request boundary so
         // `zdrEnabled` can still independently enforce the required store:false.
         if (omitPromptCacheRetention && "prompt_cache_retention" in payload) {

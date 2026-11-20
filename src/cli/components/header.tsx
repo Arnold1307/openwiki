@@ -52,8 +52,8 @@ interface HeaderProps {
 }
 
 /**
- * The session header showing OpenWiki version, provider, model, optional
- * reasoning effort, directory, and LangSmith tracing state. Renders a compact
+ * The session header showing OpenWiki version, provider, model, and optional
+ * reasoning effort and directory. Renders a compact
  * single-line variant or the full bordered form with logo. All interpolated values pass through
  * sanitizeHeaderValue so control characters cannot reach the terminal.
  */
@@ -89,10 +89,6 @@ export function Header({
     Math.max(8, terminalColumns - 17),
   );
   const shouldShowLogo = showLogo && terminalColumns > OPENWIKI_LOGO_WIDTH;
-  const tracingEnabled =
-    process.env.LANGCHAIN_TRACING_V2 === "true" &&
-    Boolean(process.env.LANGSMITH_API_KEY);
-
   if (compact) {
     return (
       <Box flexDirection="column" marginBottom={1}>
@@ -117,16 +113,7 @@ export function Header({
             </>
           ) : null}
         </Text>
-        <Text>
-          <Text color={tracingEnabled ? "green" : "gray"}>
-            {tracingEnabled ? "* " : "- "}
-          </Text>
-          <Text color={tracingEnabled ? "green" : "gray"}>
-            LangSmith tracing {tracingEnabled ? "enabled" : "disabled"}
-          </Text>
-          <Text color="gray"> - </Text>
-          <Text color="cyan">{subtitle}</Text>
-        </Text>
+        <Text color="cyan">{subtitle}</Text>
       </Box>
     );
   }
@@ -180,16 +167,7 @@ export function Header({
           <Text color="white">{displayDirectory}</Text>
         </Text>
       </Box>
-      <Text>
-        <Text color={tracingEnabled ? "green" : "gray"}>
-          {tracingEnabled ? "* " : "- "}
-        </Text>
-        <Text color={tracingEnabled ? "green" : "gray"}>
-          LangSmith tracing {tracingEnabled ? "enabled" : "disabled"}
-        </Text>
-        <Text color="gray"> - </Text>
-        <Text color="cyan">{subtitle}</Text>
-      </Text>
+      <Text color="cyan">{subtitle}</Text>
       <Text color="gray">
         Tip: ask for a docs change, or use /exit when you are done.
       </Text>

@@ -140,8 +140,8 @@ export async function runCodeModeConnectors(
       continue;
     }
     // Surface the pull so the otherwise-silent gap before the agent reads as
-    // progress ("Ingesting from LangSmith…") instead of a hang.
-    emitText(onEvent, `Ingesting from ${connector.displayName}…\n`);
+    // progress instead of a hang.
+    emitText(onEvent, `Ingesting from ${connector.displayName}â€¦\n`);
     let pull;
     try {
       // Code connectors read their committed repo config from repoRoot; a repo
@@ -340,7 +340,7 @@ async function prepareCodeModeAgentSnippet(
  * sentence; a same-named section someone wrote by hand, or a heading quoted
  * inside a fenced code block, is left alone. Each range covers the heading and
  * the run of known template lines beneath it (the sentence, "Start here:", the
- * quickstart link, the "OpenWiki includes…" and "When working…" lines, and the
+ * quickstart link, the "OpenWiki includesâ€¦" and "When workingâ€¦" lines, and the
  * blank lines between them), stopping at the first line that is not one of those
  * so hand-edited content underneath the old section survives.
  */
@@ -571,14 +571,6 @@ jobs:
         run: openwiki code --update --print
         env:
           ${createWorkflowProviderEnv(env)}
-          # Required for the LangSmith connector's code-mode pull to authenticate.
-          # For extra workspaces, add OPENWIKI_LANGSMITH_API_KEY_2, _3, ... as repo
-          # secrets and env entries here.
-          OPENWIKI_LANGSMITH_API_KEY: \${{ secrets.OPENWIKI_LANGSMITH_API_KEY }}
-          # Optional: also trace this workflow's own OpenWiki run to LangSmith.
-          LANGSMITH_API_KEY: \${{ secrets.LANGSMITH_API_KEY }}
-          LANGCHAIN_PROJECT: openwiki
-          LANGCHAIN_TRACING_V2: "true"
 
       - name: Remove transient OpenWiki run state
         if: \${{ !cancelled() }}
